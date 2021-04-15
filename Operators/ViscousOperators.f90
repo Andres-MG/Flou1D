@@ -1,0 +1,257 @@
+module ViscousOperators
+
+    use Constants, only: wp
+    use Utilities
+    use Physics
+    use MeshClass
+    use ElementClass
+    use StdExpansionClass
+    use GradientOperators
+
+    implicit none
+
+    ! Defaults to private
+    private
+
+    ! Explicitly define public functions
+    public :: ViscousBR1
+    public :: Viscous_Int
+
+    abstract interface
+        subroutine Viscous_Int(mesh, time, gradient, elemInd, isolated)
+            import wp, Mesh_t, DGSEMgradient_Int
+            type(Mesh_t),      intent(inout) :: mesh
+            real(wp),          intent(in)    :: time
+            integer, optional, intent(in)    :: elemInd
+            logical, optional, intent(in)    :: isolated
+            procedure(DGSEMgradient_Int)     :: gradient
+        end subroutine Viscous_Int
+    end interface
+
+contains
+
+subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
+    !* Arguments *!
+    real(wp),          intent(in) :: time
+    integer, optional, intent(in) :: elemInd
+    logical, optional, intent(in) :: isolated
+    ! Derived types
+    type(Mesh_t), intent(inout) :: mesh
+    ! Procedures
+    procedure(DGSEMgradient_Int) :: gradient
+
+    !* Local variables *!
+    logical  :: isolatedElem
+    integer  :: iElemMin
+    integer  :: iElemMax
+    integer  :: iLeft
+    integer  :: iRight
+    integer  :: iStep
+    integer  :: i
+    integer  :: k
+    integer  :: n
+    real(wp) :: visc
+    real(wp) :: viscL(NEQS)
+    real(wp) :: viscR(NEQS)
+    real(wp) :: PhiL(NEQS)
+    real(wp) :: PhiR(NEQS)
+    real(wp) :: flux(NEQS)
+    real(wp), allocatable :: viscFlux(:,:)
+    type(Elem_t), pointer :: elem
+    type(Face_t), pointer :: face
+    type(Face_t), pointer :: faceLeft
+    type(Face_t), pointer :: faceRight
+
+
+    if (present(isolated)) then
+        isolatedElem = isolated
+    else
+        isolatedElem = .false.
+    end if
+
+    ! Global or one element
+    if (present(elemInd)) then
+        elem => mesh%elems%at(elemInd)
+        iElemMin = elemInd
+        iElemMax = elemInd
+        iLeft    = elem%faceLeft
+        iRight   = elem%faceRight
+        iStep    = iRight - iLeft
+    else
+        iElemMin = 1
+        iElemMax = mesh%elems%size()
+        iLeft    = 1
+        iRight   = mesh%faces%size()
+        iStep    = 1
+    end if
+
+    ! Update the gradients at the interfaces
+    do i = iLeft, iRight, iStep
+
+        face => mesh%faces%at(i)
+
+        ! Interface flux
+        if (Phys%WithEntropyVars) then
+            call getEntropyVars(face%PhiL, PhiL)
+            call getEntropyVars(face%PhiR, PhiR)
+        else
+            PhiL = face%PhiL
+            PhiR = face%PhiR
+        end if
+
+        ! Riemann solver
+        if (isolatedElem) then
+
+            face%GradL = PhiL
+            face%GradR = PhiR
+
+        else
+
+            ! BR1 scheme
+            flux = 0.5_wp * ( PhiL + PhiR )
+            face%GradL = flux
+            face%GradR = flux
+
+        end if
+
+    end do
+
+    ! Calculate gradients
+    call mesh%elems%reset_last(iElemMin-1)
+    do i = iElemMin, iElemMax
+
+        elem      => mesh%elems%next()
+        faceLeft  => mesh%faces%at(elem%faceLeft)
+        faceRight => mesh%faces%at(elem%faceRight)
+
+        ! Update the volume values
+        if (Phys%WithEntropyVars) then
+
+            ! Entropy vars if required
+            do k = 1, elem%std%n
+                call getEntropyVars(elem%Phi(k,:), elem%Grad(k,:))
+            end do
+
+        else
+
+            elem%Grad = elem%Phi
+
+        end if
+
+        ! And calculate the gradient
+        elem%Grad = gradient(mesh, elem%Grad, faceLeft%GradR, faceRight%GradL, &
+                             faceLeft%PhiR, faceRight%PhiL, elem%ID)
+        elem%Grad = elem%invJ * elem%Grad
+
+        call elem%extrapolateToBoundaries(elem%Grad, &
+                                          faceLeft%GradR, faceRight%GradL)
+
+    end do
+
+    ! Reload the BDs in case they depend on the inner gradients
+    if (.not. present(elemInd)) then
+        call mesh%updateBDs(time)
+    else if (elemInd == mesh%leftBound .or. elemInd == mesh%rightBound) then
+        call mesh%updateBDs(time)
+    end if
+
+    call mesh%faces%reset_last(iLeft-1)
+    do i = iLeft, iRight, iStep
+
+        face => mesh%faces%next()
+
+        ! At the physical BDs, use the interior viscosities
+        if (face%elemLeft >= 0) then
+            elem => mesh%elems%at(face%elemLeft)
+            visc = elem%aVis
+        else
+            elem => mesh%elems%at(face%elemRight)
+            visc = elem%aVis
+        end if
+        viscL = ViscousFlux(face%PhiL, face%GradL, visc)
+
+        if (face%elemRight >= 0) then
+            elem => mesh%elems%at(face%elemRight)
+            visc = elem%aVis
+        else
+            elem => mesh%elems%at(face%elemLeft)
+            visc = elem%aVis
+        end if
+        viscR = ViscousFlux(face%PhiR, face%GradR, visc)
+
+        ! Riemann solver
+        if (isolatedElem) then
+
+            face%VFL = viscL
+            face%VFR = viscR
+
+        else
+
+            ! BR1 scheme
+            flux = 0.5_wp * (viscL + viscR)
+            face%VFL = flux
+            face%VFR = flux
+
+        end if
+
+    end do
+
+    call mesh%elems%reset_last(iElemMin-1)
+    do i = iElemMin, iElemMax
+
+        !---- Begin associate ----!
+        elem      => mesh%elems%next()
+        faceLeft  => mesh%faces%at(elem%faceLeft)
+        faceRight => mesh%faces%at(elem%faceRight)
+        associate(std        => elem%std,     &
+                  FstarLeft  => faceLeft%VFR, &
+                  FstarRight => faceRight%VFL)
+
+        ! Skip undefined elements
+        if (elem%ID < 0) then
+            cycle
+        end if
+
+        n = std%n
+
+        call reallocate(n, NEQS, viscFlux)
+        do k = 1, n
+            viscFlux(k,:) = ViscousFlux(elem%Phi(k,:), elem%Grad(k,:), elem%aVis)
+        end do
+
+        ! Interior values
+        viscFlux = matmul(std%Dh, viscFlux)
+
+        ! Add boundary flux
+        if (std%hasBounds) then
+
+            viscFlux(1,:) = viscFlux(1,:) - FstarLeft  * std%iw(1)
+            viscFlux(n,:) = viscFlux(n,:) + FstarRight * std%iw(n)
+
+        else
+
+            do k = 1, NEQS
+                viscFlux(:,k) = viscFlux(:,k) &
+                              + ( FstarRight(k) * std%bdMode(eRight,:) &
+                              - FstarLeft(k) * std%bdMode(eLeft,:) ) * std%iw
+            end do
+
+        end if
+
+
+        ! Finally, add the viscous term to the time derivative
+        elem%PhiD = elem%PhiD + viscFlux
+
+        end associate
+        !----- End associate -----!
+
+    end do
+
+    nullify(elem)
+    nullify(face)
+    nullify(faceLeft)
+    nullify(faceRight)
+
+end subroutine ViscousBR1
+
+end module ViscousOperators
