@@ -124,8 +124,9 @@ module Setup_params
     !       Type of sensor
     !           - Truncation error: eTruncationError
     !           - Modal sensor:     eModalSensor
+    !           - Density sensor:   eDensitySensor
     !           - Jump sensor:      eJumpSensor
-    integer, parameter :: SENSORTYPE    = eModalSensor
+    integer, parameter :: SENSORTYPE    = eDensitySensor
     integer, parameter :: SECSENSORTYPE = eJumpSensor
 
     !       Shape of the activation function
@@ -141,8 +142,8 @@ module Setup_params
     !               |____./ .  .
     !               |____.__.__._____ Sensor
     !
-    real(wp), parameter :: RAMPTOP         = -8.0_wp
-    real(wp), parameter :: RAMPBOTTOM      = -10.0_wp
+    real(wp), parameter :: RAMPTOP         = 1.0
+    real(wp), parameter :: RAMPBOTTOM      = 0.0
     real(wp), parameter :: SECRAMPTOP      = -1.0_wp
     real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp
     integer,  parameter :: SENSORWINDOW(2) = [0, huge(1)]
@@ -153,7 +154,7 @@ module Setup_params
     !           - rho:   1
     !           - rho*u: 2
     !           - rho*e: 3
-    integer, parameter :: SENSEDVAR = 0
+    integer, parameter :: SENSEDVAR = 1
 
     !       Unsteady correction of the truncation error
     logical, parameter :: TECORRECTION = .true.

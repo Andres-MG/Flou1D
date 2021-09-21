@@ -85,7 +85,8 @@ module Constants
     integer, parameter :: eIsolatedLocalTrunc = 112
     integer, parameter :: eTruncationError    = 113
     integer, parameter :: eModalSensor        = 114
-    integer, parameter :: eJumpSensor         = 115
+    integer, parameter :: eDensitySensor      = 115
+    integer, parameter :: eJumpSensor         = 116
 
     ! Enum: type of polynomial expansion
     integer, parameter :: eNodal = 120

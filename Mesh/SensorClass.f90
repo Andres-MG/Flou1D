@@ -130,6 +130,9 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     case (eModalSensor)
         this%mainSensor => LegendreSensor
 
+    case (eDensitySensor)
+        this%mainSensor => densitySensor
+
     case (eJumpSensor)
         this%mainSensor => jumpSensor
 
@@ -147,6 +150,9 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
 
     case (eModalSensor)
         this%secSensor => LegendreSensor
+
+    case (eDensitySensor)
+        this%secSensor => densitySensor
 
     case (eJumpSensor)
         this%secSensor => jumpSensor
@@ -368,6 +374,49 @@ function LegendreSensor(elem, time)
     call elem%fromLegendre()
 
 end function LegendreSensor
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Sensor based on the norm of the density gradient.
+!
+!> @param[in]  elem  element where the sensor is computed
+!> @param[in]  time  time instant
+!···············································································
+function densitySensor(elem, time)
+    !* Arguments *!
+    real(wp), intent(in) :: time
+    ! Derived types
+    type(Elem_t), intent(inout) :: elem
+
+    !* Return value *!
+    real(wp) :: densitySensor
+
+    !* Local variables *!
+    real(wp) :: gradRho2
+    integer  :: i
+
+
+    densitySensor = 0.0_wp
+
+    do i = 1, elem%std%n
+
+        if (Phys%WithEntropyVars) then
+            gradRho2 = sum(elem%Phi(i,:), elem%Grad(i,:))**2
+        else
+            gradRho2 = elem%Grad(i,IRHO)**2
+        end if
+
+        densitySensor = densitySensor + gradRho2 * elem%std%w(i)
+
+    end do
+
+    densitySensor = sqrt(densitySensor * elem%jac)
+
+end function densitySensor
 
 !···············································································
 !> @author
