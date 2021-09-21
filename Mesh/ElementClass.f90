@@ -55,6 +55,7 @@ module ElementClass
         integer  :: elemLeft       !< index of the left element in elems
         integer  :: elemRight      !< index of the right element in elems
         logical  :: sensed         !< .true. if the sensor detected this element
+        logical  :: saturated      !< .true. if the sensor reached its max. value
         real(wp), allocatable :: Terr(:,:)   !< truncation error
         real(wp), allocatable :: PhiD(:,:)   !< time derivative at the nodes
         real(wp), allocatable :: Src(:,:)    !< source term at the nodes
@@ -183,6 +184,7 @@ subroutine Element_constructor(this, xL, xR, nNodes, WENOsize, nType, pos)
     this%elemLeft  = -1
     this%elemRight = -1
     this%sensed    = .false.
+    this%saturated = .false.
 
     ! Allocate the rest of the attributes
     allocate(this%Terr(this%std%n-1, NEQS), source=0.0_wp)
@@ -600,6 +602,7 @@ subroutine Element_assignment(lhs, rhs)
     lhs%elemLeft  = rhs%elemLeft
     lhs%elemRight = rhs%elemRight
     lhs%sensed    = rhs%sensed
+    lhs%saturated = rhs%saturated
     lhs%Terr      = rhs%Terr
     lhs%PhiD      = rhs%PhiD
     lhs%Src       = rhs%Src

@@ -326,7 +326,7 @@ subroutine PDE_global_time_derivative(this, time)
                   faceRight => this%mesh%faces%at(elem%faceRight))
 
         ! Calculate the advective term
-        if (elem%sensed) then
+        if (elem%saturated) then
             call this%sensAdvect(this%mesh, elem%ID)
         else
             call this%advect(this%mesh, elem%ID)

@@ -164,8 +164,8 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
             faceLeft  => mesh%faces%at(elem%faceLeft)
             faceRight => mesh%faces%at(elem%faceRight)
 
-            ! When there is no active Shock-Capturing, use SVV
-            if (.not. elem%sensed) then
+            ! When the sensor is in (0,1)
+            if (elem%sensed .and. .not. elem%saturated) then
                 elem%Fsvv = SVVflux(elem%Phi, elem%Grad, elem%std%Hsvv)
                 call elem%projectToFaces(elem%Fsvv, faceLeft%SVVR, faceRight%SVVL)
 

@@ -228,7 +228,8 @@ subroutine Sensor_update_sensor_values(this, time, scaled)
     class(Sensor_t), intent(in) :: this
 
     !* Local variables *!
-    integer :: i
+    integer  :: i
+    real(wp) :: rescaled
     type(Elem_t), pointer :: elem
 
     ! Loop over all the elements
@@ -236,28 +237,16 @@ subroutine Sensor_update_sensor_values(this, time, scaled)
     do i = 1, PDE%mesh%elems%size()
 
         elem => PDE%mesh%elems%next()
-
-        if (scaled) then
-            call this%sense(elem, time, elem%sens, elem%aVis)
-        else
-            call this%sense(elem, time, elem%sens)
-        end if
+        call this%sense(elem, time, elem%sens, rescaled)
+        if (scaled) elem%aVis = rescaled
 
         ! Mark elements detected by the sensor
         if (elem%std%n > 1) then
-            if (elem%sens >= this%mainMin) then
-                elem%sensed = .true.
-            else
-                elem%sensed = .false.
-            end if
-
+            elem%sensed    = merge(.true., .false., rescaled >  0.0_wp)
+            elem%saturated = merge(.true., .false., rescaled >= 1.0_wp)
         else
-            if (elem%sens >= this%secMin) then
-                elem%sensed = .true.
-            else
-                elem%sensed = .false.
-            end if
-
+            elem%sensed    = merge(.true., .false., rescaled >  0.0_wp)
+            elem%saturated = merge(.true., .false., rescaled >= 1.0_wp)
         end if
 
     end do
@@ -405,7 +394,7 @@ function densitySensor(elem, time)
     do i = 1, elem%std%n
 
         if (Phys%WithEntropyVars) then
-            gradRho2 = sum(elem%Phi(i,:), elem%Grad(i,:))**2
+            gradRho2 = sum(elem%Phi(i,:) * elem%Grad(i,:))**2
         else
             gradRho2 = elem%Grad(i,IRHO)**2
         end if
