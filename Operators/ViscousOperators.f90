@@ -143,8 +143,7 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
                              faceLeft%PhiR, faceRight%PhiL, elem%ID)
         elem%Grad = elem%invJ * elem%Grad
 
-        call elem%extrapolateToBoundaries(elem%Grad, &
-                                          faceLeft%GradR, faceRight%GradL)
+        call elem%projectToFaces(elem%Grad, faceLeft%GradR, faceRight%GradL)
 
     end do
 
@@ -155,11 +154,43 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
         call mesh%updateBDs(time)
     end if
 
-    call mesh%faces%reset_last(iLeft-1)
+    ! Compute SVV interior and face fluxes
+    if (Phys%IsSVV) then
+
+        call mesh%elems%reset_last(iElemMin-1)
+        do i = iElemMin, iElemMax
+
+            elem      => mesh%elems%next()
+            faceLeft  => mesh%faces%at(elem%faceLeft)
+            faceRight => mesh%faces%at(elem%faceRight)
+
+            ! When there is no active Shock-Capturing, use SVV
+            if (.not. elem%sensed) then
+                elem%Fsvv = SVVflux(elem%Phi, elem%Grad, elem%std%Hsvv)
+                call elem%projectToFaces(elem%Fsvv, faceLeft%SVVR, faceRight%SVVL)
+
+            ! Let the more dissipative schemes work otherwise
+            else
+                elem%Fsvv      = 0.0_wp
+                faceLeft%SVVR  = 0.0_wp
+                faceRight%SVVL = 0.0_wp
+
+            end if
+
+        end do
+
+    end if
+
+    ! Face fluxes loop
     do i = iLeft, iRight, iStep
 
-        face => mesh%faces%next()
+        face => mesh%faces%at(i)
 
+        ! NS viscosity
+        viscL = ViscousFlux(face%PhiL, face%GradL)
+        viscR = ViscousFlux(face%PhiR, face%GradR)
+
+        ! Artificial viscosity
         ! At the physical BDs, use the interior viscosities
         if (face%elemLeft >= 0) then
             elem => mesh%elems%at(face%elemLeft)
@@ -168,7 +199,10 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
             elem => mesh%elems%at(face%elemRight)
             visc = elem%aVis
         end if
-        viscL = ViscousFlux(face%PhiL, face%GradL, visc)
+
+        if (visc > 0.0_wp) then
+            viscL = viscL + ArtViscousFlux(face%PhiL, face%GradL, visc)
+        end if
 
         if (face%elemRight >= 0) then
             elem => mesh%elems%at(face%elemRight)
@@ -177,25 +211,31 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
             elem => mesh%elems%at(face%elemLeft)
             visc = elem%aVis
         end if
-        viscR = ViscousFlux(face%PhiR, face%GradR, visc)
+
+        if (visc > 0.0_wp) then
+            viscR = viscR + ArtViscousFlux(face%PhiR, face%GradR, visc)
+        end if
+
+        ! SVV
+        if (Phys%IsSVV) then
+            viscL = viscL + face%SVVL
+            viscR = viscR + face%SVVR
+        end if
 
         ! Riemann solver
         if (isolatedElem) then
-
             face%VFL = viscL
             face%VFR = viscR
-
+        ! BR1 scheme
         else
-
-            ! BR1 scheme
             flux = 0.5_wp * (viscL + viscR)
             face%VFL = flux
             face%VFR = flux
-
         end if
 
     end do
 
+    ! Compute the integrals, interior and boundary terms
     call mesh%elems%reset_last(iElemMin-1)
     do i = iElemMin, iElemMax
 
@@ -207,17 +247,20 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
                   FstarLeft  => faceLeft%VFR, &
                   FstarRight => faceRight%VFL)
 
-        ! Skip undefined elements
-        if (elem%ID < 0) then
-            cycle
-        end if
-
         n = std%n
 
+        ! There are three contributions to the viscous fluxes:
+        !   - NS
+        !   - Artificial viscosity activated by the sensor
+        !   - Artificial viscosity deactivated by the sensor (SVV)
         call reallocate(n, NEQS, viscFlux)
         do k = 1, n
-            viscFlux(k,:) = ViscousFlux(elem%Phi(k,:), elem%Grad(k,:), elem%aVis)
+            viscFlux(k,:) = ViscousFlux(elem%Phi(k,:), elem%Grad(k,:))
+            viscFlux(k,:) = viscFlux(k,:) + ArtViscousFlux(elem%Phi(k,:),  &
+                                                           elem%Grad(k,:), &
+                                                           elem%aVis)
         end do
+        if (Phys%IsSVV .and. .not. elem%sensed) viscFlux = viscFlux + elem%Fsvv
 
         ! Interior values
         viscFlux = matmul(std%Dh, viscFlux)

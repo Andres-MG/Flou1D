@@ -1,4 +1,5 @@
 #define __ISEXTENDED
+#define __SIZE_INC   10
 #define __BASETYPE   ElemSt_t
 #define __VALUETYPE  Elem_t
 #define __VECTORTYPE ElemVector_t

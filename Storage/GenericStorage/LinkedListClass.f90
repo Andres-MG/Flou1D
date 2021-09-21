@@ -160,9 +160,6 @@ subroutine List_construct(this, size)
     class(List_t), intent(inout) :: this
 
 
-    ! Check that everything is clear
-    if (associated(this%head)) call this%destruct()
-
     allocate(this%head)
     this%tail => this%head
     this%length = 0

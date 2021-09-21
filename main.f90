@@ -1,6 +1,6 @@
 program main
 
-    use Constants
+    use Constants, only: wp
     use PrinterClass
     use PDEclass
     use Physics
@@ -20,8 +20,10 @@ program main
     call Printer%construct(FILENAME, SAVERES)
 
     ! Physics-related parameters
-    call Phys%construct(GAMMA, MU, PR, ALPHAMAX, ALPHA2BETA, ALPHA2LAMBDA, SSFVBLEND)
-    call initArtificialViscosity(ARTVISC)
+    call Phys%construct(GAMMA, MU, PR, ALPHAMAX, ALPHA2BETA, ALPHA2LAMBDA, &
+                        SVVPOW, ALPHASVV, ALPHA2BETASVV, ALPHA2LAMBDASVV,  &
+                        SSFVBLEND)
+    call initArtificialViscosity(ARTVISC, SVVTYPE)
     call initRiemannSolver(TWOPOINTTYPE, DISSTYPE)
 
     ! Case initialization
@@ -32,7 +34,7 @@ program main
     call TimeIntegrator%construct(MAXRES, TSPAN(1), TSPAN(2), TSTEP, &
                                   INT_METHOD, SAVEINT, DYNAMICSTEP,  &
                                   FIRSTDYNSTEP, LASTDYNSTEP,         &
-                                  ARTVISCSTEP, VISCWINDOW, CFLSTEP,  &
+                                  SENSORSTEP, SENSORWINDOW, CFLSTEP,  &
                                   STOPNAN)
 
     ! Truncation error estimator (for maps and sensors)

@@ -12,7 +12,6 @@ module Physics_NS
 
     use Constants
     use PhysicsStorage_NS
-    use ArtificialViscosity_NS
 
     implicit none
 
@@ -226,15 +225,13 @@ end function EulerFlux
 !
 !> @param[in]  Phi    values of the conservative variables
 !> @param[in]  Grad   gradients of the conservative/entropy variables
-!> @param[in]  alpha  artificial viscosity constant (optional)
 !
 !> @return            viscous flux
 !···············································································
-function ViscousFlux(Phi, Grad, alpha)
+function ViscousFlux(Phi, Grad)
     !* Arguments *!
-    real(wp), intent(in) :: Phi(:)
-    real(wp), intent(in) :: Grad(:)
-    real(wp), optional, intent(in) :: alpha
+    real(wp), intent(in) :: Phi(NEQS)
+    real(wp), intent(in) :: Grad(NEQS)
 
     !* Return values *!
     real(wp) :: ViscousFlux(NEQS)
@@ -257,7 +254,7 @@ function ViscousFlux(Phi, Grad, alpha)
             ! Intermediate variables
             rho  = Phi(IRHO)
             u    = Phi(IRHOU) / rho
-            p    = Phys%GammaMinusOne * ( Phi(IRHOE) - rho * u**2 * 0.5_wp )
+            p    = getPressure(Phi)
             gam  = Phys%Gamma/Phys%GammaMinusOne / Phys%Pr * p / rho
 
             ! Viscous matrix
@@ -291,16 +288,6 @@ function ViscousFlux(Phi, Grad, alpha)
 
         ViscousFlux = 0.0_wp
 
-    end if
-
-    ! Add artificial viscosity
-    if (present(alpha)) then
-    if (alpha /= 0.0_wp) then
-
-        ViscousFlux = ViscousFlux + ArtViscousFlux(Phi, Grad, alpha &
-                                  * [1.0_wp, Phys%Alpha(2), Phys%Alpha(3)])
-
-    end if
     end if
 
 end function ViscousFlux

@@ -179,6 +179,9 @@ subroutine PDE_constructor(this, k, n, nodeType, periodic, advection, &
         end if
         this%advect => AdvectionSSFV
 
+    case (eDiscAdvection)
+        this%advect => AdvectionDiscontinuous
+
     case default
         call printError("PDEclass.f90", &
             "The requested advection operator is not implemented.")
@@ -220,6 +223,9 @@ subroutine PDE_constructor(this, k, n, nodeType, periodic, advection, &
                 "The DGSEM with entropy-stable FV requires Gauss-Lobatto nodes.")
         end if
         this%sensAdvect => AdvectionSSFV
+
+    case (eDiscAdvection)
+        this%sensAdvect => AdvectionDiscontinuous
 
     case default
         this%sensAdvect => this%advect
@@ -319,11 +325,6 @@ subroutine PDE_global_time_derivative(this, time)
         associate(faceLeft  => this%mesh%faces%at(elem%faceLeft), &
                   faceRight => this%mesh%faces%at(elem%faceRight))
 
-        ! Skip undefined elements
-        if (elem%ID < 0) then
-            cycle
-        end if
-
         ! Calculate the advective term
         if (elem%sensed) then
             call this%sensAdvect(this%mesh, elem%ID)
@@ -384,7 +385,7 @@ subroutine PDE_element_time_derivative(this, time, ind, isolated)
     elem%PhiD = 0.0_wp
 
     ! Approximate values at the boundaries of the element
-    call elem%extrapolateToBoundaries(elem%Phi, faceLeft%PhiR, faceRight%PhiL)
+    call elem%projectToFaces(elem%Phi, faceLeft%PhiR, faceRight%PhiL)
 
     ! Update BDs if the element is at a physical boundary
     if (ind == this%mesh%leftBound .or. ind == this%mesh%rightBound) then

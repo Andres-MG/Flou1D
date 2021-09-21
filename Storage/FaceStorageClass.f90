@@ -1,4 +1,5 @@
 #define __ISEXTENDED
+#define __SIZE_INC   10
 #define __BASETYPE   FaceSt_t
 #define __VALUETYPE  Face_t
 #define __VECTORTYPE FaceVector_t

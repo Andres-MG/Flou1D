@@ -9,6 +9,7 @@
         type(List_t), allocatable :: list
     contains
         procedure :: construct  => List_construct
+        procedure :: reserve    => List_reserve
         procedure :: destruct   => List_destruct
         procedure :: size       => List_get_length
         procedure :: max_size   => List_max_size
@@ -43,6 +44,17 @@ subroutine List_construct(this, size)
     call this%list%construct(size)
 
 end subroutine List_construct
+
+subroutine List_reserve(this, size)
+    !* Arguments *!
+    integer,           intent(in) :: size  ! Useless here
+    ! Derived types
+    class(__LISTTYPE), intent(inout) :: this
+
+
+    ! Nothing to do here...
+
+end subroutine List_reserve
 
 function List_get_length(this) result(size)
     !* Arguments *!

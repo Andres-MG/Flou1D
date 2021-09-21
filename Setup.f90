@@ -15,15 +15,15 @@ module Setup_params
     implicit none
 
     ! Parameters of the simulation
-    integer,  parameter :: P        = 5                 ! Initial app. order (P)
+    integer,  parameter :: P        = 5                 ! Initial expansion order (P)
     integer,  parameter :: K        = 100               ! Number of elements
     real(wp), parameter :: MAXRES   = 1e-8_wp           ! Max residual allowed
-    real(wp), parameter :: TSPAN(2) = [0.0_wp, 0.18_wp]  ! Time span
+    real(wp), parameter :: TSPAN(2) = [0.0_wp, 0.18_wp] ! Time span
     real(wp), parameter :: TSTEP    = 1e-4_wp           ! Time step
     logical,  parameter :: PERIODIC = .false.           ! Periodic BCs
     integer,  parameter :: SAVEINT  = 0                 ! Steps between prints
     integer,  parameter :: SAVERES  = 0                 ! Points per element
-    integer,  parameter :: CFLSTEP  = 0                 ! Steps between CFL
+    integer,  parameter :: CFLSTEP  = 400               ! Steps between CFL
 
     !-> Solution file name
     !       - Tecplot format: .dat
@@ -32,13 +32,14 @@ module Setup_params
 
     !-> Mathematical discretization
     !       Advection term
-    !           - Weak:       eWeakAdvection
-    !           - Strong:     eStrongAdvection
-    !           - Split form: eSplitAdvection
-    !           - WENO:       eWENOadvection
-    !           - SSWENO:     eSSWENOadvection
-    !           - FV:         eFVadvection
-    !           - SSFV:       eSSFVadvection
+    !           - Weak:          eWeakAdvection
+    !           - Strong:        eStrongAdvection
+    !           - Split form:    eSplitAdvection
+    !           - WENO:          eWENOadvection
+    !           - SSWENO:        eSSWENOadvection
+    !           - FV:            eFVadvection
+    !           - SSFV:          eSSFVadvection
+    !           - Discontinuous: eDiscAdvection
     integer, parameter :: ADVECTION = eWeakAdvection
 
     !-> Advection of elements marked by the sensor
@@ -92,9 +93,47 @@ module Setup_params
     real(wp), parameter :: MU = 0.0_wp
     real(wp), parameter :: PR = 0.71_wp
 
-    !           - Artificial viscosity
+    !-> Artificial viscosity formulation
+    !       - No added viscosity:            fNone
+    !       - Laplacian flux:                eLaplacianVisc
+    !       - GP flux w/ physical variables: eGuermondPhysical
+    !       - GP flux w/ entropy variables:  eGuermondEntropy
+    integer,  parameter :: ARTVISC      = fNone
+    real(wp), parameter :: ALPHAMAX     = 0.0002_wp * (P+1) * K
+    real(wp), parameter :: ALPHA2BETA   = 10.0_wp
+    real(wp), parameter :: ALPHA2LAMBDA = 0.0_wp
+
+    !-> Entropy-stable FV-DGSEM blending constant
+    !       - Higher is "more" DGSEM
+    !       - Lower is "more" FV
+    real(wp), parameter :: SSFVBLEND = 1e1_wp
+
+    !-> Spectral Vanishing Viscosity (SVV)
+    !       Type of SVV
+    !           - No SVV:                       fNone
+    !           - GP flux w/ entropy variables: eGuermondEntropySVV
     !
-    !     Viscosity |    .  .  ._____
+    !       - SVVPOW: Exponent of the filtering law (i/P)**SVVPOW
+    integer,  parameter :: SVVTYPE         = eGuermondEntropySVV
+    integer,  parameter :: SVVPOW          = 2
+    real(wp), parameter :: ALPHASVV        = 0.001_wp
+    real(wp), parameter :: ALPHA2BETASVV   = 10.0_wp
+    real(wp), parameter :: ALPHA2LAMBDASVV = 0.0_wp
+
+    !-> Sensor definition
+    !       Type of sensor
+    !           - Truncation error: eTruncationError
+    !           - Modal sensor:     eModalSensor
+    !           - Jump sensor:      eJumpSensor
+    integer, parameter :: SENSORTYPE    = eModalSensor
+    integer, parameter :: SECSENSORTYPE = eJumpSensor
+
+    !       Shape of the activation function
+    !           - RAMPTOP/BOTTOM for elements of orden P>0
+    !           - SECRAMPTOP/BOTTOM for elements of order P=0
+    !           - Bottom values serve as a threshold to trigger SVV and SSFV
+    !
+    !  Scaled value |    .  .  ._____
     !               |    .  . /.
     !               |    .  ./ .
     !               |    .  .  .
@@ -102,28 +141,32 @@ module Setup_params
     !               |____./ .  .
     !               |____.__.__._____ Sensor
     !
-    !real(wp), parameter :: ALPHAMAX      = 1d-4 * (P+1) * K
-    real(wp), parameter :: ALPHAMAX      = 1.0_wp * (P+1) * K
-    real(wp), parameter :: ALPHA2BETA    = 0.0_wp
-    real(wp), parameter :: ALPHA2LAMBDA  = 0.0_wp
-    real(wp), parameter :: RAMPTOP       = 1.8_wp
-    real(wp), parameter :: RAMPBOTTOM    = 1.8_wp
-    real(wp), parameter :: SECRAMPTOP    = -1.0_wp
-    real(wp), parameter :: SECRAMPBOTTOM = -2.0_wp
-    integer,  parameter :: VISCWINDOW(2) = [0, huge(1)]
-    integer,  parameter :: ARTVISCSTEP   = 1
+    real(wp), parameter :: RAMPTOP         = -8.0_wp
+    real(wp), parameter :: RAMPBOTTOM      = -10.0_wp
+    real(wp), parameter :: SECRAMPTOP      = -1.0_wp
+    real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp
+    integer,  parameter :: SENSORWINDOW(2) = [0, huge(1)]
+    integer,  parameter :: SENSORSTEP      = 1
 
-    !-> Artificial viscosity formulation
-    !       - Inviscid flow:                         fNone
-    !       - Laplacian flux:                        eLaplacianVisc
-    !       - Guermond flux w/ physical var. and NS: eGuermondPhysical
-    !       - Guermond flux w/ entropy vars. and NS: eGuermondEntropy
-    integer, parameter :: ARTVISC = fNone
+    !       Sensed variable
+    !           - rho*p: 0
+    !           - rho:   1
+    !           - rho*u: 2
+    !           - rho*e: 3
+    integer, parameter :: SENSEDVAR = 0
 
-    !-> Entropy-stable FV-DGSEM blending constant
-    !       - Higher is "more" DGSEM
-    !       - Lower is "more" FV
-    real(wp), parameter :: SSFVBLEND = 8e1_wp
+    !       Unsteady correction of the truncation error
+    logical, parameter :: TECORRECTION = .true.
+
+    !       Truncation error estimator
+    !           - No TE estimation: fNone
+    !           - Non-isolated TE:  eLocalTrunc
+    !           - Isolated TE:      eIsolatedLocalTrunc
+    integer, parameter :: TRUNCERRORTYPE = eIsolatedLocalTrunc
+
+    !       Compute the truncation error map
+    logical, parameter :: TEMAP      = .true.
+    integer, parameter :: LOWERLIMIT = 1
 
     ! -> WENO stencil size
     integer,  parameter :: KWENO = 3
@@ -153,34 +196,6 @@ module Setup_params
 
     !       Timesteps between mesh adaptations
     integer, parameter :: DYNAMICSTEP = 30
-
-    !-> Sensor definition
-    !       Type of sensor
-    !           - Truncation error: eTruncationError
-    !           - Modal sensor:     eModalSensor
-    !           - Jump sensor:      eJumpSensor
-    integer, parameter :: SENSORTYPE    = eTruncationError
-    integer, parameter :: SECSENSORTYPE = eJumpSensor
-
-    !       Sensed variable
-    !           - rho*p: 0
-    !           - rho:   1
-    !           - rho*u: 2
-    !           - rho*e: 3
-    integer, parameter :: SENSEDVAR = 0
-
-    !       Unsteady correction of the truncation error
-    logical, parameter :: TECORRECTION = .true.
-
-    !       Truncation error estimator
-    !           - No TE estimation: fNone
-    !           - Non-isolated TE:  eLocalTrunc
-    !           - Isolated TE:      eIsolatedLocalTrunc
-    integer, parameter :: TRUNCERRORTYPE = eIsolatedLocalTrunc
-
-    !       Compute the truncation error map
-    logical, parameter :: TEMAP      = .false.
-    integer, parameter :: LOWERLIMIT = 1
 
     !-> Stop at NaN (for debugging purposes):
     logical, parameter :: STOPNAN = .true.

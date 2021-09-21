@@ -16,6 +16,7 @@
 #endif
     contains
         procedure :: construct  => Vector_construct
+        procedure :: reserve    => Vector_reserve
         procedure :: destruct   => Vector_destruct
         procedure :: size       => Vector_get_length
         procedure :: max_size   => Vector_max_size
@@ -40,21 +41,54 @@ contains
 
 subroutine Vector_construct(this, size)
     !* Arguments *!
-    integer,           intent(in) :: size  ! Useless here
+    integer, intent(in) :: size
     ! Derived types
     class(__VECTORTYPE), intent(inout) :: this
 
 
-    ! Check size
-    if (size < 1) error stop "Size of __VECTORTYPE must be positive."
-
-    if (associated(this%vector)) deallocate(this%vector)
     allocate(this%vector(size))
 
-    this%tailInd   = 0
-    this%length    = size
+    this%tailInd = 0
+    this%length  = size
 
 end subroutine Vector_construct
+
+subroutine Vector_reserve(this, size)
+    !* Arguments *!
+    integer, intent(in) :: size
+    ! Derived types
+    class(__VECTORTYPE), intent(inout) :: this
+
+    !* Local variables *!
+#ifdef __ISEXTENDED
+    type(__VALUETYPE), allocatable :: tmp(:)
+#else
+    __VALUETYPE,       allocatable :: tmp(:)
+#endif
+
+
+    ! Construct if not associated, but this should not be used
+    if (.not. associated(this%vector)) then
+
+        allocate(this%vector(size))
+        this%tailInd = 0
+        this%length  = size
+
+    ! Reallocate the private vector
+    else if (this%length < size) then
+
+        allocate(tmp(size))
+        tmp(:this%length) = this%vector
+
+        deallocate(this%vector)   ! Cannot use move_alloc with pointers :(
+        allocate(this%vector, source=tmp)
+
+        deallocate(tmp)
+        this%length = size
+
+    end if
+
+end subroutine Vector_reserve
 
 function Vector_get_length(this) result(size)
     !* Arguments *!
@@ -91,7 +125,15 @@ subroutine Vector_push(this, val)
     class(__VECTORTYPE), intent(inout) :: this
 
 
-    error stop "__VECTORTYPE does not implement the push() method."
+    ! Reallocate if needed
+    if (this%tailInd+1 > this%length) then
+        call this%reserve(this%length + __SIZE_INC)
+    end if
+
+    ! Shift all the vector to the 'right' and insert 'val' in the first position
+    this%vector(2:this%tailInd+1) = this%vector(:this%tailInd)
+    this%vector(1) = val
+    this%tailInd = this%tailInd + 1
 
 end subroutine Vector_push
 
@@ -106,17 +148,14 @@ subroutine Vector_push_back(this, val)
     class(__VECTORTYPE), intent(inout) :: this
 
 
-    ! Add one to the tail index
-    this%tailInd = this%tailInd + 1
-
-    if (this%tailInd > this%length) then
-        this%tailInd = this%length
-        error stop "The storage vector is already full."
-
-    else
-        this%vector(this%tailInd) = val
-
+    ! Reallocate if needed
+    if (this%tailInd+1 > this%length) then
+        call this%reserve(this%length + __SIZE_INC)
     end if
+
+    ! Insert 'val' in the last position
+    this%tailInd = this%tailInd + 1
+    this%vector(this%tailInd) = val
 
 end subroutine Vector_push_back
 
@@ -132,7 +171,9 @@ function Vector_pop(this) result(val)
 #endif
 
 
-    error stop "__VECTORTYPE does not implement the pop() method."
+    val = this%vector(1)
+    this%tailInd = this%tailInd - 1
+    this%vector(:this%tailInd) = this%vector(2:this%tailInd+1)
 
 end function Vector_pop
 
@@ -148,15 +189,8 @@ function Vector_pop_back(this) result(val)
 #endif
 
 
-    if (this%tailInd < 1) then
-        this%tailInd = 0
-        error stop "The storage vector is already empty."
-
-    else
-        val = this%vector(this%tailInd)
-        this%tailInd = this%tailInd - 1
-
-    end if
+    val = this%vector(this%tailInd)
+    this%tailInd = this%tailInd - 1
 
 end function Vector_pop_back
 
@@ -172,7 +206,14 @@ subroutine Vector_insert(this, val, ind)
     class(__VECTORTYPE), intent(inout) :: this
 
 
-    if (ind > this%tailInd) this%tailInd = ind
+    ! Reallocate if necessary
+    if (this%tailInd+1 > this%length) then
+        call this%reserve(this%length + __SIZE_INC)
+    end if
+
+    ! Shift the vector and insert 'val'
+    this%vector(ind+1:this%tailInd+1) = this%vector(ind:this%tailInd)
+    this%tailInd = this%tailInd + 1
     this%vector(ind) = val
 
 end subroutine Vector_insert
@@ -189,7 +230,6 @@ subroutine Vector_update(this, val, ind)
     class(__VECTORTYPE), intent(inout) :: this
 
 
-    if (ind > this%tailInd) this%tailInd = ind
     this%vector(ind) = val
 
 end subroutine Vector_update
@@ -201,7 +241,9 @@ subroutine Vector_erase(this, ind)
     class(__VECTORTYPE), intent(inout) :: this
 
 
-    if (ind == this%tailInd) this%tailInd = this%tailInd - 1
+    ! Shift the vector to the left
+    this%vector(ind:this%tailInd-1) = this%vector(ind+1:this%tailInd)
+    this%tailInd = this%tailInd - 1
 
 end subroutine Vector_erase
 

@@ -57,6 +57,7 @@ module Constants
     integer, parameter :: eSSWENOadvection = 64
     integer, parameter :: eFVadvection     = 65
     integer, parameter :: eSSFVadvection   = 66
+    integer, parameter :: eDiscAdvection   = 67
 
     ! Enum: gradient formulation
     integer, parameter :: eWeakGradient   = 70
@@ -69,6 +70,9 @@ module Constants
     integer, parameter :: eLaplacianVisc    = 90
     integer, parameter :: eGuermondPhysical = 91
     integer, parameter :: eGuermondEntropy  = 92
+
+    ! Enum: artificial SVV flux types
+    integer, parameter :: eGuermondEntropySVV = 93
 
     ! Enum: time integration schemes
     integer, parameter :: eInvalid = 100

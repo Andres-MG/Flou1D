@@ -44,23 +44,23 @@ module TimeIntegratorClass
 !> Handles the time integration of the equations.
 !···············································································
     type TimeIntegrator_t
-        integer  :: method       = eInvalid  !< time-stepping algorithm
-        integer  :: printInt     = 0         !< time steps between prints
-        integer  :: numSteps     = 0         !< no. of steps so far
-        integer  :: dynStep      = 0         !< time steps between dyn. adapts.
-        integer  :: firstDynStep = 0         !< first step for dynamic adapt.
-        integer  :: lastDynStep  = 0         !< last step for dynamic adapt.
-        integer  :: aViscSteps   = 0         !< no. of steps between vis. calc.
-        integer  :: aViscLowStep = 0         !< first step of art. viscosity
-        integer  :: aViscTopStep = 0         !< last step of art. viscosity
-        integer  :: cflSteps     = 0         !< no. of steps between cfl calc.
-        logical  :: completed    = .false.   !< .true. when the end is reached
-        logical  :: stopNaN      = .true.    !< .true. to avoid NaN values
-        real(wp) :: maxRes       = 0.0_wp    !< max. value of the residual
-        real(wp) :: tInit        = 0.0_wp    !< initial time of the simulation
-        real(wp) :: tFinal       = 0.0_wp    !< final time of the simulation
-        real(wp) :: dt           = 0.0_wp    !< fixed time step
-        real(wp) :: t            = 0.0_wp    !< 'present' time of the sim.
+        integer  :: method           = eInvalid  !< time-stepping algorithm
+        integer  :: printInt         = 0         !< time steps between prints
+        integer  :: numSteps         = 0         !< number of steps so far
+        integer  :: dynStep          = 0         !< time steps between dynamic adaptations
+        integer  :: firstDynStep     = 0         !< first step for dynamic adaptation
+        integer  :: lastDynStep      = 0         !< last step for dynamic adaptation
+        integer  :: aSensorSteps     = 0         !< number of steps between sensor computations
+        integer  :: aSensorFirstStep = 0         !< start of the "sensing" window
+        integer  :: aSensorLastStep  = 0         !< end of the "sensing" window
+        integer  :: cflSteps         = 0         !< number of steps between CFL calculations
+        logical  :: completed        = .false.   !< .true. when the end is reached
+        logical  :: stopNaN          = .true.    !< .true. to stop at NaN values
+        real(wp) :: maxRes           = 0.0_wp    !< maximum value of the residual
+        real(wp) :: tInit            = 0.0_wp    !< initial time of the simulation
+        real(wp) :: tFinal           = 0.0_wp    !< final time of the simulation
+        real(wp) :: dt               = 0.0_wp    !< fixed time step
+        real(wp) :: t                = 0.0_wp    !< 'present' time of the sim.
         procedure(Integrator_Int), &
             pointer, nopass, private :: &
                 integrator => null()         !< Pointer to the int. routine
@@ -129,20 +129,20 @@ subroutine timeIntegrator_constructor(this, maxResidual, t0, tf, dt,     &
     class(TimeIntegrator_t), intent(inout) :: this
 
     ! Set some time constants
-    this%completed    = .false.
-    this%stopNaN      = stopAtNaN
-    this%maxRes       = maxResidual
-    this%tInit        = t0
-    this%tFinal       = tf
-    this%dt           = dt
-    this%printInt     = printStep
-    this%dynStep      = dynamicStep
-    this%firstDynStep = firstDynamicStep
-    this%lastDynStep  = lastDynamicStep
-    this%aViscSteps   = artViscSteps
-    this%aViscLowStep = viscWindow(1)
-    this%aViscTopStep = viscWindow(2)
-    this%cflSteps     = cflStep
+    this%completed        = .false.
+    this%stopNaN          = stopAtNaN
+    this%maxRes           = maxResidual
+    this%tInit            = t0
+    this%tFinal           = tf
+    this%dt               = dt
+    this%printInt         = printStep
+    this%dynStep          = dynamicStep
+    this%firstDynStep     = firstDynamicStep
+    this%lastDynStep      = lastDynamicStep
+    this%aSensorSteps     = artViscSteps
+    this%aSensorFirstStep = viscWindow(1)
+    this%aSensorLastStep  = viscWindow(2)
+    this%cflSteps         = cflStep
 
     ! Select the time integration scheme
     select case (intMethod)
@@ -313,7 +313,7 @@ subroutine timeIntegrator_integrate(this, TEmap)
     ! Assign a fixed value for the artificial viscosity coeff. if requested
     if (Phys%Alpha(1) /= 0.0_wp) then
 
-        if (this%aViscSteps <= 0) then
+        if (this%aSensorSteps <= 0) then
 
             call PDE%mesh%elems%reset_last(0)
             do i = 1, PDE%mesh%elems%size()
@@ -328,7 +328,7 @@ subroutine timeIntegrator_integrate(this, TEmap)
             call printWarning("TimeIntegratorClass.f90", &
                 "Artificial viscosity coeffs. have been set as constants.")
 
-        else if (this%numSteps >= this%aViscLowStep) then
+        else if (this%numSteps >= this%aSensorFirstStep) then
 
             call PDE%mesh%updateArtViscosity()
 
@@ -346,19 +346,20 @@ subroutine timeIntegrator_integrate(this, TEmap)
         call this%stepInTime(dt)
 
         ! Update the sensor and the artificial viscous coefficients
-        if (this%numSteps >= this%aViscLowStep .and. &
-            this%numSteps <= this%aViscTopStep) then
+        if (this%numSteps >= this%aSensorFirstStep .and. &
+            this%numSteps <= this%aSensorLastStep) then
 
-            if (Phys%Alpha(1) /= 0.0_wp .and. this%aViscSteps > 0) then
+            if (this%aSensorSteps > 0) then
+            if (mod(this%numSteps, this%aSensorSteps) == 0) then
 
-                if (mod(this%numSteps, this%aViscSteps) == 0) then
+                call Sensor%updateMesh(this%t, scaled=.true.)
+                sensorUpdated = .true.
 
-                    call Sensor%updateMesh(this%t, scaled=.true.)
+                if (Phys%Alpha(1) /= 0.0_wp) then
                     call PDE%mesh%updateArtViscosity()
-                    sensorUpdated = .true.
-
                 end if
 
+            end if
             end if
 
         end if
@@ -416,24 +417,24 @@ subroutine timeIntegrator_integrate(this, TEmap)
         end if
 
         ! Perform h-adaptation
-        if (adapt) then
+        !if (adapt) then
 
-            ! Recall that the sensor might have been calculated before
-            if (.not. sensorUpdated) then
-                call Sensor%updateMesh(this%t, scaled=.false.)
-                sensorUpdated = .true.
-            end if
+            !! Recall that the sensor might have been calculated before
+            !if (.not. sensorUpdated) then
+                !call Sensor%updateMesh(this%t, scaled=.false.)
+                !sensorUpdated = .true.
+            !end if
 
-            ! Adapt
+            !! Adapt
             !call hAdaptation(mesh)
-            adapt = .false.
+            !adapt = .false.
 
-            ! Notify
-            write(infoMsg, '(a,a,f0.5)') "Dynamic adaptation performed at ", &
-                                         "time ", this%t
-            call printInfo("TimeIntegratorClass.f90", infoMsg)
+            !! Notify
+            !write(infoMsg, '(a,a,f0.5)') "Dynamic adaptation performed at ", &
+                                         !"time ", this%t
+            !call printInfo("TimeIntegratorClass.f90", infoMsg)
 
-        end if
+        !end if
 
         ! Reset the flags
         sensorUpdated = .false.

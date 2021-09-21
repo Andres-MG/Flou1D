@@ -7,6 +7,7 @@
     type, abstract :: __BASETYPE
     contains
         procedure(Construct_Int),  deferred :: construct
+        procedure(Construct_Int),  deferred :: reserve
         procedure(Destruct_Int),   deferred :: destruct
         procedure(GetSize_Int),    deferred :: size
         procedure(GetSize_Int),    deferred :: max_size

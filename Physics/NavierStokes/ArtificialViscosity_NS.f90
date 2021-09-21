@@ -14,6 +14,7 @@ module ArtificialViscosity_NS
     use Utilities
     use ExceptionsAndMessages
     use PhysicsStorage_NS
+    use Physics_NS, only: getPressure
 
     implicit none
 
@@ -23,20 +24,31 @@ module ArtificialViscosity_NS
     ! Explicitly define public functions
     public :: initArtificialViscosity
     public :: ArtViscousFlux
+    public :: SVVflux
     public :: destructArtificialViscosity
 
     abstract interface
         function ArtViscFlux_Int(Phi, Grad, alpha)
             import wp
             import NEQS
-            real(wp), intent(in) :: Phi(:)
-            real(wp), intent(in) :: Grad(:)
-            real(wp), intent(in) :: alpha(:)
+            real(wp), intent(in) :: Phi(NEQS)
+            real(wp), intent(in) :: Grad(NEQS)
+            real(wp), intent(in) :: alpha
             real(wp) :: ArtViscFlux_Int(NEQS)
         end function ArtViscFlux_Int
+
+        function SVVflux_Int(Phi, Grad, H)
+            import wp
+            import NEQS
+            real(wp), intent(in)  :: Phi(:,:)
+            real(wp), intent(in)  :: Grad(:,:)
+            real(wp), intent(in)  :: H(:,:)
+            real(wp), allocatable :: SVVflux_Int(:,:)
+        end function SVVflux_Int
     end interface
 
     procedure(ArtViscFlux_Int), pointer :: ArtViscousFlux => null()
+    procedure(SVVflux_Int),     pointer :: SVVflux => null()
 
 contains
 
@@ -49,22 +61,24 @@ contains
 !> Initialises the function pointer to the selected viscous flux implementation.
 !
 !> @param[in]  artViscType  type of artificial viscosity
+!> @param[in]  SVVtype      type of Spectral Vanishing Viscosity
 !···············································································
-subroutine initArtificialViscosity(artViscType)
+subroutine initArtificialViscosity(artViscType, SVVtype)
     !* Arguments *!
-    integer,  intent(in) :: artViscType
+    integer, intent(in) :: artViscType
+    integer, intent(in) :: SVVtype
 
-    ! Select artificial viscosity flux fomrulation
+    ! Select artificial viscosity flux formulation
     select case (artViscType)
 
     case (eLaplacianVisc)
         ArtViscousFlux => LaplacianViscosity
-        ! Phys%WithEntropyVars = .false.
+        Phys%WithEntropyVars = Phys%WithEntropyVars .or. .false.
         Phys%IsViscous = .true.
 
     case (eGuermondPhysical)
         ArtViscousFlux => GuermondPhysical
-        ! Phys%WithEntropyVars = .false.
+        Phys%WithEntropyVars = Phys%WithEntropyVars .or. .false.
         Phys%IsViscous = .true.
 
     case (eGuermondEntropy)
@@ -74,12 +88,33 @@ subroutine initArtificialViscosity(artViscType)
 
     case (fNone)
         ArtViscousFlux => noArtificialViscosity
-        ! Phys%WithEntropyVars = .false.
-        ! Phys%IsViscous = .false.
+        Phys%WithEntropyVars = Phys%WithEntropyVars .or. .false.
+        Phys%IsViscous = Phys%IsViscous .or. .false.
 
     case default
-        call printError("Physics_CE.f90", &
+        call printError("ArtificialViscosity_NS.f90", &
                         "The selected artificial viscosity is not available.")
+
+    end select
+
+    ! Select SVV formulation
+    select case (SVVtype)
+
+    case (eGuermondEntropySVV)
+        SVVflux => GuermondEntropySVV
+        Phys%WithEntropyVars = .true.
+        Phys%IsViscous = .true.
+        Phys%IsSVV = .true.
+
+    case (fNone)
+        SVVflux => noSVV
+        Phys%WithEntropyVars = Phys%WithEntropyVars .or. .false.
+        Phys%IsViscous = Phys%IsViscous .or. .false.
+        Phys%IsSVV = .false.
+
+    case default
+        call printError("ArtificialViscosity_NS.f90", &
+                        "The selected SVV flux is not available.")
 
     end select
 
@@ -91,22 +126,22 @@ end subroutine initArtificialViscosity
 !
 !  DESCRIPTION
 !> @brief
-!> 'Empty' artificial viscosity flux. Use only for inviscid cases.
+!> 'Empty' artificial viscosity flux.
 !>  \f[ Phi_1 \quad \rho   \f]
 !>  \f[ Phi_2 \quad \rho u \f]
 !>  \f[ Phi_3 \quad \rho e \f]
 !
-!> @param[in]  Phi     values of the conservative variables
-!> @param[in]  Grad    gradients of the conservative variables
-!> @param[in]  alphas  artificial viscosity constants
+!> @param[in]  Phi    values of the conservative variables
+!> @param[in]  Grad   gradients of the conservative variables
+!> @param[in]  alpha  main artificial viscosity constant
 !
 !> @return            zero viscous flux
 !···············································································
-function noArtificialViscosity(Phi, Grad, alphas)
+function noArtificialViscosity(Phi, Grad, alpha)
     !* Arguments *!
-    real(wp), intent(in) :: Phi(:)
-    real(wp), intent(in) :: Grad(:)
-    real(wp), intent(in) :: alphas(:)
+    real(wp), intent(in) :: Phi(NEQS)
+    real(wp), intent(in) :: Grad(NEQS)
+    real(wp), intent(in) :: alpha
 
     !* Return values *!
     real(wp) :: noArtificialViscosity(NEQS)
@@ -127,23 +162,23 @@ end function noArtificialViscosity
 !>  \f[ Phi_2 \quad \rho u \f]
 !>  \f[ Phi_3 \quad \rho e \f]
 !
-!> @param[in]  Phi     values of the conservative variables (not used)
-!> @param[in]  Grad    gradients of the conservative variables
-!> @param[in]  alphas  artificial viscosity constants
+!> @param[in]  Phi    values of the conservative variables (not used)
+!> @param[in]  Grad   gradients of the conservative variables
+!> @param[in]  alpha  main artificial viscosity constant
 !
-!> @return             viscous flux
+!> @return            viscous flux
 !···············································································
-function LaplacianViscosity(Phi, Grad, alphas)
+function LaplacianViscosity(Phi, Grad, alpha)
     !* Arguments *!
-    real(wp), intent(in) :: Phi(:)
-    real(wp), intent(in) :: Grad(:)
-    real(wp), intent(in) :: alphas(:)
+    real(wp), intent(in) :: Phi(NEQS)
+    real(wp), intent(in) :: Grad(NEQS)
+    real(wp), intent(in) :: alpha
 
     !* Return values *!
     real(wp) :: LaplacianViscosity(NEQS)
 
     ! Viscous fluxes
-    LaplacianViscosity = alphas(1) * Grad
+    LaplacianViscosity = alpha * Grad
 
 end function LaplacianViscosity
 
@@ -166,17 +201,17 @@ end function LaplacianViscosity
 !>  \f[ Grad_2 \quad \nabla (\rho u) \f]
 !>  \f[ Grad_3 \quad \nabla (\rho e) \f]
 !
-!> @param[in]  Phi     values of the conservative variables
-!> @param[in]  Grad    gradients of the conservative variables
-!> @param[in]  alphas  artificial viscosity constants
+!> @param[in]  Phi    values of the conservative variables
+!> @param[in]  Grad   gradients of the conservative variables
+!> @param[in]  alpha  main artificial viscosity constant
 !
-!> @return             viscous flux
+!> @return            viscous flux
 !···············································································
-function GuermondPhysical(Phi, Grad, alphas)
+function GuermondPhysical(Phi, Grad, alpha)
     !* Arguments *!
-    real(wp), intent(in) :: Phi(:)
-    real(wp), intent(in) :: Grad(:)
-    real(wp), intent(in) :: alphas(:)
+    real(wp), intent(in) :: Phi(NEQS)
+    real(wp), intent(in) :: Grad(NEQS)
+    real(wp), intent(in) :: alpha
 
     !* Return values *!
     real(wp) :: GuermondPhysical(NEQS)
@@ -186,7 +221,6 @@ function GuermondPhysical(Phi, Grad, alphas)
     real(wp) :: e
     real(wp) :: ux
     real(wp) :: eix
-    real(wp) :: alpha
     real(wp) :: beta
     real(wp) :: lambda
 
@@ -202,9 +236,9 @@ function GuermondPhysical(Phi, Grad, alphas)
     GuermondPhysical(IRHOE) = Grad(IRHOE) - Phi(IRHO) * u * ux
 
     ! Viscous term
-    alpha  = alphas(1)
-    beta   = alphas(2)
-    lambda = alphas(3)
+    ! alpha is already given
+    beta   = alpha * Phys%Alpha(2)
+    lambda = alpha * Phys%Alpha(3)
     GuermondPhysical = alpha * GuermondPhysical          &
                      + beta * ux * [ 0.0_wp, 1.0_wp, u ] &
                      + lambda * [0.0_wp, 0.0_wp, eix ]
@@ -230,23 +264,22 @@ end function GuermondPhysical
 !>  \f[ Grad_2 \quad \nabla w_2 \f]
 !>  \f[ Grad_3 \quad \nabla w_3 \f]
 !
-!> @param[in]  Phi     values of the conservative variables
-!> @param[in]  Grad    gradients of the entropy variables
-!> @param[in]  alphas  artificial viscosity constants
+!> @param[in]  Phi    values of the conservative variables
+!> @param[in]  Grad   gradients of the entropy variables
+!> @param[in]  alpha  main artificial viscosity constant
 !
-!> @retur              viscous flux
+!> @return            viscous flux
 !···············································································
-function GuermondEntropy(Phi, Grad, alphas)
+function GuermondEntropy(Phi, Grad, alpha)
     !* Arguments *!
-    real(wp), intent(in) :: Phi(:)
-    real(wp), intent(in) :: Grad(:)
-    real(wp), intent(in) :: alphas(:)
+    real(wp), intent(in) :: Phi(NEQS)
+    real(wp), intent(in) :: Grad(NEQS)
+    real(wp), intent(in) :: alpha
 
     !* Return values *!
     real(wp) :: GuermondEntropy(NEQS)
 
     !* Local variables *!
-    real(wp) :: alpha
     real(wp) :: beta
     real(wp) :: lambda
     real(wp) :: rho
@@ -263,7 +296,7 @@ function GuermondEntropy(Phi, Grad, alphas)
     rho   = Phi(IRHO)
     u     = Phi(IRHOU) / rho
     e     = Phi(IRHOE) / rho
-    p     = Phys%GammaMinusOne * ( Phi(IRHOE) - rho * u**2 * 0.5_wp )
+    p     = getPressure(Phi)
     lam2  = ( p / rho )**2 / Phys%GammaMinusOne
 
     ! Density regularisation matrix
@@ -281,10 +314,10 @@ function GuermondEntropy(Phi, Grad, alphas)
     Bl(2,:) = [ 0.0_wp, 0.0_wp, 0.0_wp ]
     Bl(3,:) = [ 0.0_wp, 0.0_wp, lam2   ]
 
-    ! Guermond flux
-    alpha  = alphas(1)
-    beta   = alphas(2)
-    lambda = alphas(3)
+    ! GP constants
+    ! alpha is already given
+    beta   = alpha * Phys%Alpha(2)
+    lambda = alpha * Phys%Alpha(3)
 
     ! Avoid compilation error with Intel Fortran
     tmp = alpha * rho * Bk + beta * p / rho * Bm + lambda * Bl
@@ -298,13 +331,119 @@ end function GuermondEntropy
 !
 !  DESCRIPTION
 !> @brief
+!> 'Empty' SVV flux.
+!>  \f[ Phi_1 \quad \rho   \f]
+!>  \f[ Phi_2 \quad \rho u \f]
+!>  \f[ Phi_3 \quad \rho e \f]
+!
+!> @param[in]  Phi   values of the conservative variables
+!> @param[in]  Grad  gradients of the conservative variables
+!> @param[in]  H     Filtering matrix, Bwd.diag(F).Fwd
+!
+!> @return           zero viscous flux
+!···············································································
+function noSVV(Phi, Grad, H)
+    !* Arguments *1
+    real(wp), intent(in) :: Phi(:,:)
+    real(wp), intent(in) :: Grad(:,:)
+    real(wp), intent(in) :: H(:,:)
+
+    !* Return values *!
+    real(wp), allocatable :: noSVV(:,:)
+
+
+    allocate(noSVV, mold=Phi)
+    noSVV = 0.0_wp
+
+end function noSVV
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Guermond-Popov viscous flux with entropy variables and SVV filtering.
+!
+!>  \f[ Phi_1  \quad \rho   \f]
+!>  \f[ Phi_2  \quad \rho u \f]
+!>  \f[ Phi_3  \quad \rho e \f]
+!>  \f[ Grad_1 \quad \nabla w_1 \f]
+!>  \f[ Grad_2 \quad \nabla w_2 \f]
+!>  \f[ Grad_3 \quad \nabla w_3 \f]
+!
+!> @param[in]  Phi   values of the conservative variables
+!> @param[in]  Grad  gradients of the entropy variables
+!> @param[in]  H     Filtering matrix, Bwd.diag(F).Fwd
+!
+!> @return           viscous flux
+!···············································································
+function GuermondEntropySVV(Phi, Grad, H) result(F)
+    !* Arguments *!
+    real(wp), intent(in) :: Phi(:,:)
+    real(wp), intent(in) :: Grad(:,:)
+    real(wp), intent(in) :: H(:,:)
+
+    !* Return values *!
+    real(wp), allocatable :: F(:,:)
+
+    !* Local variables *!
+    real(wp), allocatable :: u(:)
+    real(wp), allocatable :: e(:)
+    real(wp), allocatable :: p(:)
+    real(wp), allocatable :: lam(:)
+    real(wp), allocatable :: sD(:,:)
+    real(wp)              :: alpha
+    real(wp)              :: beta
+    real(wp)              :: lambda
+
+
+    ! Intermediate variables
+    u   = Phi(:,IRHOU) / Phi(:,IRHO)
+    e   = Phi(:,IRHOE) / Phi(:,IRHO)
+    p   = getPressure(Phi)
+    lam = ( p / Phi(:,IRHO) ) / sqrt(Phys%GammaMinusOne)
+
+    ! GP constants
+    alpha  = Phys%AlphaSVV(1)
+    beta   = Phys%AlphaSVV(1) * Phys%AlphaSVV(2)
+    lambda = Phys%AlphaSVV(1) * Phys%AlphaSVV(3)
+
+    ! √D diagonal
+    allocate(sD, mold=Phi)
+    sD(:,1) = sqrt(alpha * Phi(:,IRHO))
+    sD(:,2) = sqrt(beta * p / Phi(:,IRHO))
+    sD(:,3) = lam * sqrt(alpha * Phi(:,IRHO) + lambda)
+
+    allocate(F, mold=Phi);
+
+    ! RHS of the flux: √DLᵀG
+    F(:,IRHO)  = sD(:,1) * (Grad(:,1) + u*Grad(:,2) + e*Grad(:,3))
+    F(:,IRHOU) = sD(:,2) * (Grad(:,2) + u*Grad(:,3))
+    F(:,IRHOE) = sD(:,3) *  Grad(:,3)
+
+    ! Convolution
+    F = matmul(H, F)
+
+    ! LHS of the flux: L√D
+    F(:,IRHO)  =   sD(:,1)*F(:,1)
+    F(:,IRHOU) = u*sD(:,1)*F(:,1) +   sD(:,2)*F(:,2)
+    F(:,IRHOE) = e*sD(:,1)*F(:,1) + u*sD(:,2)*F(:,2) + sD(:,3)*F(:,3)
+
+end function GuermondEntropySVV
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
 !> Destructs the artificial viscous flux function pointer.
 !···············································································
 subroutine destructArtificialViscosity()
 
-    if (associated(artViscousFlux)) then
-        nullify(artViscousFlux)
-    end if
+    if (associated(artViscousFlux)) nullify(artViscousFlux)
+    if (associated(SVVflux))        nullify(SVVflux)
 
 end subroutine destructArtificialViscosity
 

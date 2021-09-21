@@ -105,7 +105,7 @@ subroutine Mesh_constructor(this, n, xk, nt, WENOsize, periodic)
     call this%elems%construct(k)
     call this%faces%construct(k+1)
 
-    do i = 2, k
+    do i = 1, k
 
         allocate(aux_elem)
         allocate(aux_face)
@@ -269,7 +269,7 @@ subroutine Mesh_project_faces(this, gradient)
                           gradL => faceL%GradR, &
                           gradR => faceR%GradL)
 
-                    call elem%extrapolateToBoundaries(grad, gradL, gradR)
+                    call elem%projectToFaces(grad, gradL, gradR)
 
                 end associate
                 !----- End associate -----!
@@ -292,7 +292,7 @@ subroutine Mesh_project_faces(this, gradient)
         faceR => this%faces%at(elem%faceRight)
         associate(Phi  => elem%Phi, PhiL => faceL%PhiR, PhiR => faceR%PhiL)
 
-            call elem%extrapolateToBoundaries(Phi, PhiL, PhiR)
+            call elem%projectToFaces(Phi, PhiL, PhiR)
 
         end associate
         !----- End associate -----!

@@ -185,7 +185,7 @@ subroutine Sensor_compute_sensor(this, elem, time, sensedVal, scaledVal)
 
     ! Call the main sensor on elements with P > 1
     if (elem%std%n > 1) then
-        sensedVal =  this%mainSensor(elem, time)
+        sensedVal = this%mainSensor(elem, time)
 
         if (present(scaledVal)) then
             scaledVal = sinRamp(sensedVal-this%mainS0, this%mainDelta)

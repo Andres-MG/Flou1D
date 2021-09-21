@@ -46,9 +46,12 @@ module PhysicsStorage_NS
         real(wp) :: Mu
         real(wp) :: Pr
         real(wp) :: Alpha(3)
+        real(wp) :: AlphaSVV(3)
         real(wp) :: SSFVc
+        integer  :: Psvv
         logical  :: WithEntropyVars
         logical  :: IsViscous
+        logical  :: IsSVV
     contains
         procedure :: construct => NS_constructor
     end type PhysicsNS_t
@@ -65,15 +68,20 @@ contains
 !> @brief
 !> Initialises some characteristic constants of the compressible NS equations.
 !
-!> @param[in]  gam           specific heat ratio
-!> @param[in]  mu            dynamic viscosity [Pa·s]
-!> @param[in]  Pr            Prandtl number
-!> @param[in]  alpha         max. artificial viscosity
-!> @param[in]  alpha2beta    ratio between the 2-1 art. visc. coefficients
-!> @param[in]  alpha2lambda  ratio between the 3-1 art. visc. coefficients
-!> @param[in]  SSFVblending  SSFV blending constant
+!> @param[in]  gam              specific heat ratio
+!> @param[in]  mu               dynamic viscosity [Pa·s]
+!> @param[in]  Pr               Prandtl number
+!> @param[in]  alpha            max. artificial viscosity
+!> @param[in]  alpha2beta       ratio between the 2-1 art. visc. coefficients
+!> @param[in]  alpha2lambda     ratio between the 3-1 art. visc. coefficients
+!> @param[in]  Psvv             exponent of the SVV filtering function
+!> @param[in]  alphaSVV         SVV main viscous coefficient
+!> @param[in]  alpha2betaSVV    ratio between the 2-1 art. visc. coefficients
+!> @param[in]  alpha2lambdaSVV  ratio between the 3-1 art. visc. coefficients
+!> @param[in]  SSFVblending     SSFV blending constant
 !···············································································
 subroutine NS_constructor(this, gam, mu, Pr, alpha, alpha2beta, alpha2lambda, &
+                          Psvv, alphaSVV, alpha2betaSVV, alpha2lambdaSVV,     &
                           SSFVblending)
     !* Arguments *!
     real(wp), intent(in) :: gam
@@ -82,6 +90,10 @@ subroutine NS_constructor(this, gam, mu, Pr, alpha, alpha2beta, alpha2lambda, &
     real(wp), intent(in) :: alpha
     real(wp), intent(in) :: alpha2beta
     real(wp), intent(in) :: alpha2lambda
+    integer,  intent(in) :: Psvv
+    real(wp), intent(in) :: alphaSVV
+    real(wp), intent(in) :: alpha2betaSVV
+    real(wp), intent(in) :: alpha2lambdaSVV
     real(wp), intent(in) :: SSFVblending
     ! Derived types
     class(PhysicsNS_t), intent(inout) :: this
@@ -107,6 +119,12 @@ subroutine NS_constructor(this, gam, mu, Pr, alpha, alpha2beta, alpha2lambda, &
     this%Alpha(1) = alpha
     this%Alpha(2) = alpha2beta
     this%Alpha(3) = alpha2lambda
+
+    this%IsSVV       = .false.
+    this%Psvv        = Psvv
+    this%AlphaSVV(1) = alphaSVV
+    this%AlphaSVV(2) = alpha2betaSVV
+    this%AlphaSVV(3) = alpha2lambdaSVV
 
     this%SSFVc = SSFVblending
 

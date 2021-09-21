@@ -43,26 +43,27 @@ module ElementClass
         real(wp) :: dx   = 2.0_wp  !< size of the element
         real(wp) :: xL   = -1.0_wp !< position of the left boundary
         real(wp) :: xR   = 1.0_wp  !< position of the right boundary
-        real(wp) :: sens = 0.0_wp  !< shock-capt. sensor
+        real(wp) :: sens = 0.0_wp  !< shock-capturing sensor
         real(wp) :: aVis = 0.0_wp  !< artificial viscosity
         real(wp) :: hp   = 0.0_wp  !< value of dx / (dG%n-1)
         real(wp) :: jac  = 0.0_wp  !< jacobian (constant)
         real(wp) :: invJ = 0.0_wp  !< jacobian (inverse)
         integer  :: pSpace = 0     !< polynomial space type
         integer  :: ID             !< position in the global list
-        integer  :: faceLeft       !< ind. of the left face in faces
-        integer  :: faceRight      !< ind. of the right face in faces
-        integer  :: elemLeft       !< ind. of the left elmt. in elems
-        integer  :: elemRight      !< ind. of the right elmt. in elems
+        integer  :: faceLeft       !< index of the left face in faces
+        integer  :: faceRight      !< index of the right face in faces
+        integer  :: elemLeft       !< index of the left element in elems
+        integer  :: elemRight      !< index of the right element in elems
         logical  :: sensed         !< .true. if the sensor detected this element
         real(wp), allocatable :: Terr(:,:)   !< truncation error
         real(wp), allocatable :: PhiD(:,:)   !< time derivative at the nodes
         real(wp), allocatable :: Src(:,:)    !< source term at the nodes
         real(wp), allocatable :: Phi(:,:)    !< function values at the nodes
+        real(wp), allocatable :: Fsvv(:,:)   !< SVV fluxes at the nodes
         real(wp), allocatable :: exact(:,:)  !< exact values at the nodes
         real(wp), allocatable :: Grad(:,:)   !< gradient at the nodes
         real(wp), allocatable :: G(:,:)      !< vectors for low storage RK
-        type(WENO_stencil_t)  :: WENOst      !< Stencil info for WENO methods
+        type(WENO_stencil_t)  :: WENOst      !< stencil info for WENO methods
         class(StdExp_t), allocatable :: std  !< standard element discretization
     contains
         procedure, private :: s_map => Element_scalar_affine_map
@@ -70,17 +71,17 @@ module ElementClass
         procedure, private :: Element_assignment
         procedure, private :: interpVector => Element_interpolate_values_vector
         procedure, private :: interpMatrix => Element_interpolate_values_matrix
-        generic   :: affineMap               => s_map, v_map
-        generic   :: interpAt                => interpVector, interpMatrix
-        procedure :: construct               => Element_constructor
-        procedure :: extrapolateToBoundaries => Element_boundary_interpolator
-        procedure :: getCoords               => Element_get_coordinates
-        procedure :: interpTo                => Element_interpolate_to_std
-        procedure :: toLegendre              => Element_to_Legendre
-        procedure :: fromLegendre            => Element_from_Legendre
-        procedure :: computeAvgVals          => Element_avg_values
-        procedure :: computeCFL              => Element_CFL_number
-        generic   :: assignment(=)           => Element_assignment
+        generic   :: affineMap      => s_map, v_map
+        generic   :: interpAt       => interpVector, interpMatrix
+        procedure :: construct      => Element_constructor
+        procedure :: projectToFaces => Element_face_projector
+        procedure :: getCoords      => Element_get_coordinates
+        procedure :: interpTo       => Element_interpolate_to_std
+        procedure :: toLegendre     => Element_to_Legendre
+        procedure :: fromLegendre   => Element_from_Legendre
+        procedure :: computeAvgVals => Element_avg_values
+        procedure :: computeCFL     => Element_CFL_number
+        generic   :: assignment(=)  => Element_assignment
     end type Elem_t
 
 !···············································································
@@ -94,18 +95,20 @@ module ElementClass
 !> Algorithm 116 (modified: only for faces)
 !···············································································
     type Face_t
-        integer               :: ID         !< position in the list
-        integer               :: elemLeft   !< element to the left
-        integer               :: elemRight  !< element to the right
-        real(wp), allocatable :: PhiL(:)    !< function vals at the left bound
-        real(wp), allocatable :: PhiR(:)    !< function vals at the right bound
-        real(wp), allocatable :: GradL(:)   !< function grads at the left bd.
-        real(wp), allocatable :: GradR(:)   !< function grads at the right bd.
-        real(wp), allocatable :: EFL(:)     !< Euler fluxes at the left bound
-        real(wp), allocatable :: EFR(:)     !< Euler fluxes at the right bound
-        real(wp), allocatable :: VFL(:)     !< viscous fluxes at the left bd.
-        real(wp), allocatable :: VFR(:)     !< viscous fluxes at the right bd.
-        real(wp), allocatable :: EF(:)      !< Riemann flux
+        integer  :: ID            !< position in the list
+        integer  :: elemLeft      !< element to the left
+        integer  :: elemRight     !< element to the right
+        real(wp) :: PhiL(NEQS)    !< function values at the left side
+        real(wp) :: PhiR(NEQS)    !< function values at the right side
+        real(wp) :: GradL(NEQS)   !< function gradients at the left side
+        real(wp) :: GradR(NEQS)   !< function gradients at the right side
+        real(wp) :: EFL(NEQS)     !< Euler fluxes at the left side
+        real(wp) :: EFR(NEQS)     !< Euler fluxes at the right side
+        real(wp) :: VFL(NEQS)     !< viscous fluxes at the left side
+        real(wp) :: VFR(NEQS)     !< viscous fluxes at the right side
+        real(wp) :: SVVL(NEQS)    !< SVV fluxes at the left side
+        real(wp) :: SVVR(NEQS)    !< SVV fluxes at the right side
+        real(wp) :: EF(NEQS)      !< Riemann flux
     contains
         procedure, private :: Face_assignment
         procedure :: construct     => Face_constructor
@@ -141,7 +144,7 @@ subroutine Element_constructor(this, xL, xR, nNodes, WENOsize, nType, pos)
     class(Elem_t), intent(inout) :: this
 
 
-    ! First, constroct the local standard space
+    ! First, construct the local standard space
     select case (nType)
     case (eGauss)
         allocate(NodalDG_GL :: this%std)
@@ -154,7 +157,13 @@ subroutine Element_constructor(this, xL, xR, nNodes, WENOsize, nType, pos)
                         "Only Gauss and Gauss-Lobatto points are allowed.")
     end select
 
-    call this%std%construct(nNodes)
+    ! Pass Psvv if the case includes SVV
+    if (Phys%IsSVV) then
+        call this%std%init(nNodes, Phys%Psvv)
+    else
+        call this%std%init(nNodes)
+    end if
+
     call this%WENOst%construct(nNodes, WENOsize, this%std%hasBounds, &
                                this%std%x, this%std%xc)
 
@@ -176,13 +185,15 @@ subroutine Element_constructor(this, xL, xR, nNodes, WENOsize, nType, pos)
     this%sensed    = .false.
 
     ! Allocate the rest of the attributes
-    allocate(this%Terr(this%std%n-1, NEQS))
-    allocate(this%PhiD(this%std%n, NEQS))
-    allocate(this%Src(this%std%n, NEQS))
-    allocate(this%Phi(this%std%n, NEQS))
-    allocate(this%exact(this%std%n, NEQS))
-    allocate(this%Grad(this%std%n, NEQS))
-    allocate(this%G(this%std%n, NEQS))
+    allocate(this%Terr(this%std%n-1, NEQS), source=0.0_wp)
+    allocate(this%PhiD(this%std%n, NEQS), source=0.0_wp)
+    allocate(this%Src(this%std%n, NEQS), source=0.0_wp)
+    allocate(this%Phi(this%std%n, NEQS), source=0.0_wp)
+    allocate(this%exact(this%std%n, NEQS), source=0.0_wp)
+    allocate(this%Grad(this%std%n, NEQS), source=0.0_wp)
+    allocate(this%G(this%std%n, NEQS), source=0.0_wp)
+
+    if (Phys%IsSVV) allocate(this%Fsvv(this%std%n, NEQS), source=0.0_wp)
 
     ! Just for printing
     this%Terr = 0.0_wp
@@ -202,7 +213,7 @@ end subroutine Element_constructor
 !> @param[out]  uL  values at the left face
 !> @param[out]  uR  values at the right face
 !···············································································
-subroutine Element_boundary_interpolator(this, u, uL ,uR)
+subroutine Element_face_projector(this, u, uL ,uR)
     !* Arguments *!
     real(wp), intent(in)  :: u(:,:)
     real(wp), intent(out) :: uL(:)
@@ -210,9 +221,9 @@ subroutine Element_boundary_interpolator(this, u, uL ,uR)
     ! Derived types
     class(Elem_t), intent(in) :: this
 
-    call this%std%extrapolate(u, uL, uR)
+    call this%std%project(u, uL, uR)
 
-end subroutine Element_boundary_interpolator
+end subroutine Element_face_projector
 
 !···············································································
 !> @author
@@ -441,10 +452,8 @@ subroutine Element_interpolate_to_std(this, faceLeft, faceRight, stdNew, project
 
     ! Finally, extrapolate if requested
     if (project) then
-        call this%extrapolateToBoundaries(this%Phi,  &
-                                          faceLeft%PhiR, faceRight%PhiL)
-        call this%extrapolateToBoundaries(this%Grad, &
-                                          faceLeft%GradR, faceRight%GradL)
+        call this%projectToFaces(this%Phi,  faceLeft%PhiR, faceRight%PhiL)
+        call this%projectToFaces(this%Grad, faceLeft%GradR, faceRight%GradL)
     end if
 
 end subroutine Element_interpolate_to_std
@@ -601,6 +610,8 @@ subroutine Element_assignment(lhs, rhs)
     lhs%std       = rhs%std
     lhs%WENOst    = rhs%WENOst
 
+    if (Phys%IsSVV) lhs%Fsvv = rhs%Fsvv
+
 end subroutine Element_assignment
 
 !···············································································
@@ -623,15 +634,9 @@ subroutine Face_constructor(this, pos)
     this%elemLeft  = -1
     this%elemRight = -1
 
-    call reallocate(NEQS, this%PhiL)
-    call reallocate(NEQS, this%PhiR)
-    call reallocate(NEQS, this%GradL)
-    call reallocate(NEQS, this%GradR)
-    call reallocate(NEQS, this%EFL)
-    call reallocate(NEQS, this%EFR)
-    call reallocate(NEQS, this%VFL)
-    call reallocate(NEQS, this%VFR)
-    call reallocate(NEQS, this%EF)
+    ! Initialize to 0 just in case
+    this%SVVL = 0.0_wp
+    this%SVVR = 0.0_wp
 
 end subroutine Face_constructor
 
@@ -662,6 +667,8 @@ subroutine Face_assignment(lhs, rhs)
     lhs%EFR       = rhs%EFR
     lhs%VFL       = rhs%VFL
     lhs%VFR       = rhs%VFR
+    lhs%SVVL      = rhs%SVVL
+    lhs%SVVR      = rhs%SVVR
     lhs%EF        = rhs%EF
 
 end subroutine Face_assignment

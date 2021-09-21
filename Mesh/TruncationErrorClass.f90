@@ -234,7 +234,7 @@ function TE_local_trunc_error(this, elem, orderDecrease, time, &
         allocate(NodalDG_GLL :: auxStd)
     end select
 
-    call auxStd%construct(auxElem%std%n-orderDecrease)
+    call auxStd%init(auxElem%std%n-orderDecrease)
     call elem%interpTo(PDE%mesh%faces%at(elem%faceLeft),  &
                        PDE%mesh%faces%at(elem%faceRight), &
                        auxStd, project=.true.)
