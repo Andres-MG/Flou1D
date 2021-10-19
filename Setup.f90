@@ -15,8 +15,8 @@ module Setup_params
     implicit none
 
     ! Parameters of the simulation
-    integer,  parameter :: P        = 5                 ! Initial expansion order (P)
-    integer,  parameter :: K        = 100               ! Number of elements
+    integer,  parameter :: P        = 12                ! Initial expansion order (P)
+    integer,  parameter :: K        = 20                ! Number of elements
     real(wp), parameter :: MAXRES   = 1e-8_wp           ! Max residual allowed
     real(wp), parameter :: TSPAN(2) = [0.0_wp, 0.18_wp] ! Time span
     real(wp), parameter :: TSTEP    = 1e-4_wp           ! Time step
@@ -99,14 +99,14 @@ module Setup_params
     !       - GP flux w/ physical variables: eGuermondPhysical
     !       - GP flux w/ entropy variables:  eGuermondEntropy
     integer,  parameter :: ARTVISC      = fNone
-    real(wp), parameter :: ALPHAMAX     = 0.0002_wp * (P+1) * K
+    real(wp), parameter :: ALPHAMAX     = 0.0001_wp * (P+1) * K
     real(wp), parameter :: ALPHA2BETA   = 10.0_wp
     real(wp), parameter :: ALPHA2LAMBDA = 0.0_wp
 
     !-> Entropy-stable FV-DGSEM blending constant
     !       - Higher is "more" DGSEM
     !       - Lower is "more" FV
-    real(wp), parameter :: SSFVBLEND = 1e1_wp
+    real(wp), parameter :: SSFVBLEND = 1e+1_wp
 
     !-> Spectral Vanishing Viscosity (SVV)
     !       Type of SVV
@@ -116,17 +116,18 @@ module Setup_params
     !       - SVVPOW: Exponent of the filtering law (i/P)**SVVPOW
     integer,  parameter :: SVVTYPE         = eGuermondEntropySVV
     integer,  parameter :: SVVPOW          = 2
-    real(wp), parameter :: ALPHASVV        = 0.001_wp
+    real(wp), parameter :: ALPHASVV        = 0.0001_wp
     real(wp), parameter :: ALPHA2BETASVV   = 10.0_wp
     real(wp), parameter :: ALPHA2LAMBDASVV = 0.0_wp
 
     !-> Sensor definition
     !       Type of sensor
+    !           - Aliasing error:   eAliasingSensor
     !           - Truncation error: eTruncationError
     !           - Modal sensor:     eModalSensor
     !           - Density sensor:   eDensitySensor
     !           - Jump sensor:      eJumpSensor
-    integer, parameter :: SENSORTYPE    = eDensitySensor
+    integer, parameter :: SENSORTYPE    = eAliasingSensor
     integer, parameter :: SECSENSORTYPE = eJumpSensor
 
     !       Shape of the activation function
@@ -142,8 +143,8 @@ module Setup_params
     !               |____./ .  .
     !               |____.__.__._____ Sensor
     !
-    real(wp), parameter :: RAMPTOP         = 1.0
-    real(wp), parameter :: RAMPBOTTOM      = 0.0
+    real(wp), parameter :: RAMPTOP         = 1.0_wp  !-8.0_wp
+    real(wp), parameter :: RAMPBOTTOM      = -2.0_wp  !-10.0_wp
     real(wp), parameter :: SECRAMPTOP      = -1.0_wp
     real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp
     integer,  parameter :: SENSORWINDOW(2) = [0, huge(1)]

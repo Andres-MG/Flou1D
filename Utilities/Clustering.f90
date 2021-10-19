@@ -32,14 +32,14 @@ pure subroutine kMeans(k, x, xAvg, clusters, info)
     nDims = size(x, dim=1)
     nPts  = size(x, dim=2)
     allocate(prevClusters(nPts))
- 
+
     ! Initial centroids
     do i = 1, k
         ind = floor( 1.0_wp + real(i-1, kind=wp)/(k-1) * (nPts-1) )
         xAvg(:,i) = x(:,ind)
     end do
     call kMeans_compute_clusters(k, nDims, nPts, x, xAvg, clusters)
- 
+
     ! Loop until convergence
     do i = 1, max_iters
         prevClusters = clusters
@@ -47,7 +47,7 @@ pure subroutine kMeans(k, x, xAvg, clusters, info)
         call kMeans_compute_clusters(k, nDims, nPts, x, xAvg, clusters)
         if (all(prevClusters == clusters)) exit
     end do
- 
+
     ! Check convergence
     if (i > max_iters) clusters = -1
     if (present(info)) info = merge(i-1, i, i > max_iters)
@@ -70,7 +70,7 @@ pure subroutine kMeans_compute_clusters(k, nDims, nPts, x, xAvg, clusters)
     real(wp) :: minDist
 
 
-    do concurrent (i = 1: nPts)
+    do i = 1, nPts
         minDist = norm2( x(:,i) - xAvg(:,1) )
         clusters(i) = 1
         do j = 2, k

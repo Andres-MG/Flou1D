@@ -700,7 +700,7 @@ subroutine AdvectionDiscontinuous(mesh, elemID)
     type(Mesh_t), intent(inout) :: mesh
 
     !* Local variables *!
-    integer  :: i
+    integer  :: i, j
     integer  :: n
     real(wp), allocatable :: DivF(:,:)
     real(wp), allocatable :: Fa(:,:)
@@ -757,19 +757,23 @@ subroutine AdvectionDiscontinuous(mesh, elemID)
     DivF = 0.0_wp
 
     ! Interior values ($\alpha$)
-    do concurrent (integer :: j = 1: n, i = 1: n)
-        DivF(i,:) = DivF(i,:) + std%Dh(i,j) * Fa(:,j)
+    do j = 1, n
+        do i = 1, n
+            DivF(i,:) = DivF(i,:) + std%Dh(i,j) * Fa(:,j)
+        end do
     end do
 
     ! Interior values ($\beta$ with $\gamma^{\pm}=1$)
-    do concurrent (integer :: j = 1: n, i = 1: n)
-        if (j == 1) then
-            DivF(i,:) = DivF(i,:) + (1.0_wp*std%lh(i,j-1)-std%lh(i,j)) * Fb(:,j) * std%iw(i)
-        else if (j == n) then
-            DivF(i,:) = DivF(i,:) + (std%lh(i,j-1)-1.0_wp*std%lh(i,j)) * Fb(:,j) * std%iw(i)
-        else
-            DivF(i,:) = DivF(i,:) + (std%lh(i,j-1)-std%lh(i,j)) * Fb(:,j) * std%iw(i)
-        end if
+    do j = 1, n
+        do i = 1, n
+            if (j == 1) then
+                DivF(i,:) = DivF(i,:) + (1.0_wp*std%lh(i,j-1)-std%lh(i,j)) * Fb(:,j) * std%iw(i)
+            else if (j == n) then
+                DivF(i,:) = DivF(i,:) + (std%lh(i,j-1)-1.0_wp*std%lh(i,j)) * Fb(:,j) * std%iw(i)
+            else
+                DivF(i,:) = DivF(i,:) + (std%lh(i,j-1)-std%lh(i,j)) * Fb(:,j) * std%iw(i)
+            end if
+        end do
     end do
 
     ! Add boundary flux

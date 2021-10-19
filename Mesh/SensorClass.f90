@@ -124,6 +124,9 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     ! Point to the selected sensor function
     select case (sensType)
 
+    case (eAliasingSensor)
+        this%mainSensor => aliasingSensor
+
     case (eTruncationError)
         this%mainSensor => TEsensor
 
@@ -144,6 +147,9 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
 
     ! Check the selected secondary sensor
     select case (secSensType)
+
+    case (eAliasingSensor)
+        this%secSensor => aliasingSensor
 
     case (eTruncationError)
         this%secSensor => TEsensor
@@ -261,6 +267,56 @@ end subroutine Sensor_update_sensor_values
 !
 !  DESCRIPTION
 !> @brief
+!> Sensor based on the aliasing error.
+!
+!> @param[inout]  elem  element where the sensor is computed
+!> @param[in]     time  time instant
+!···············································································
+function aliasingSensor(elem, time)
+    !* Arguments *!
+    real(wp), intent(in) :: time
+    ! Derived types
+    type(Elem_t), intent(inout) :: elem
+
+    !* Return values *!
+    real(wp) :: aliasingSensor
+
+    !* Local variables *!
+    integer               :: i, j
+    integer               :: n
+    real(wp), allocatable :: Fs(:,:,:)
+    real(wp), allocatable :: aliasing(:,:)
+
+    n = elem%std%n
+
+    allocate(Fs(n, n, NEQS))
+    do i = 1, n
+        Fs(i,i,:) = EulerFlux(elem%Phi(i,:))
+        do j = i+1, n
+            Fs(i,j,:) = TwoPointFlux(elem%Phi(i,:), elem%Phi(j,:))
+            Fs(j,i,:) = Fs(i,j,:)
+        end do
+    end do
+
+    allocate(aliasing(n, NEQS), source=0.0_wp)
+    do j = 1, n
+        do i = 1, n
+            aliasing(i,:) = aliasing(i,:) + elem%std%D(i,j) * (2.0_wp*Fs(i,j,:) - Fs(j,j,:))
+        end do
+    end do
+
+    ! Aliasing error estimation
+    aliasing = abs(aliasing)
+    aliasingSensor = log10( maxval(aliasing) )
+
+end function aliasingSensor
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
 !> Sensor based on the truncation error estimator from the solution residual.
 !
 !> @param[inout]  elem  element where the sensor is computed
@@ -274,6 +330,8 @@ function TEsensor(elem, time)
 
     !* Return values *!
     real(wp) :: TEsensor
+
+    !* Local variables *!
     integer  :: orderDec
 
         ! Defaults to 0 if not the main sensor

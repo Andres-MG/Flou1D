@@ -260,7 +260,7 @@ subroutine ViscousBR1(mesh, time, gradient, elemInd, isolated)
                                                            elem%Grad(k,:), &
                                                            elem%aVis)
         end do
-        if (Phys%IsSVV .and. .not. elem%sensed) viscFlux = viscFlux + elem%Fsvv
+        if (Phys%IsSVV) viscFlux = viscFlux + elem%Fsvv
 
         ! Interior values
         viscFlux = matmul(std%Dh, viscFlux)
