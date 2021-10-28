@@ -113,7 +113,7 @@ module Setup_params
     !           - GP flux w/ entropy variables: eGuermondEntropySVV
     !
     !       - SVVPOW: Exponent of the filtering law (i/P)**SVVPOW
-    integer,  parameter :: SVVTYPE         = eGuermondEntropySVV
+    integer,  parameter :: SVVTYPE         = fNone
     integer,  parameter :: SVVPOW          = 2
     real(wp), parameter :: ALPHASVV        = 0.0001_wp
     real(wp), parameter :: ALPHA2BETASVV   = 10.0_wp
@@ -142,7 +142,7 @@ module Setup_params
     !               |____./ .  .
     !               |____.__.__._____ Sensor
     !
-    real(wp), parameter :: RAMPTOP         = 1.0_wp  !-8.0_wp
+    real(wp), parameter :: RAMPTOP         =  1.0_wp  !-8.0_wp
     real(wp), parameter :: RAMPBOTTOM      = -2.0_wp  !-10.0_wp
     real(wp), parameter :: SECRAMPTOP      = -1.0_wp
     real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp

@@ -563,13 +563,7 @@ subroutine AdvectionSSFV(mesh, elemID)
     real(wp) :: b
     real(wp) :: d
     real(wp) :: Ftmp(NEQS)
-    real(wp) :: PhiLeft(NEQS)
-    real(wp) :: PhiRight(NEQS)
-    real(wp) :: jump(NEQS)
-    integer,  allocatable :: side(:)
-    real(wp), allocatable :: PhiAvg(:,:)
-    real(wp), allocatable :: PhiBar(:,:)
-    real(wp), allocatable :: PhiV(:,:)
+    real(wp) :: PhiV(NEQS)
     real(wp), allocatable :: FSbar(:,:)
     real(wp), allocatable :: FVbar(:,:)
     real(wp), allocatable :: Fbar(:,:)
@@ -602,41 +596,12 @@ subroutine AdvectionSSFV(mesh, elemID)
     end do
     FSbar = 2.0_wp * FSbar
 
-    ! Interpolate the complementary grid values
-    ! Clusters
-    ! allocate(PhiV, source=Phi)
-    ! allocate(PhiAvg(2, NEQS))
-    ! allocate(side(n))
-    ! call kMeans(2, PhiV, PhiAvg, side)
-
-    ! Remove the offset to get less oscillatory polynomials
-    ! jump = PhiAvg(2,:) - PhiAvg(1,:)
-    ! do i = 1, n
-    !     if (side(i) == 2) then
-    !         PhiV(i,:) = PhiV(i,:) - jump
-    !     end if
-    ! end do
-
-    ! Interpolate into the complementary grid
-    ! allocate(PhiBar(0:n, NEQS))
-    ! PhiBar = matmul(std%lh, PhiV)
-
     ! FV flux on the complementary grid
     allocate(FVbar(n-1, NEQS))
     do i = 1, n-1
-
-        ! if (side(i) == side(i+1)) then
-            PhiLeft  = Phi(i,:)
-            PhiRight = Phi(i+1,:)
-        ! else
-        !     PhiLeft  = PhiBar(i,:)
-        !     PhiRight = PhiBar(i,:)
-        !     if (side(i) == 2)   PhiLeft  = PhiLeft  + jump
-        !     if (side(i+1) == 2) PhiRight = PhiRight + jump
-        ! end if
-
-        FVbar(i,:) = SSFVdissipativeFlux(PhiLeft, PhiRight)
-
+        PhiV = Phi(i,:) + (Phi(i+1,:)-Phi(i,:))/(std%x(i+1)-std%x(i))*(std%xc(i)-std%x(i))
+        FVbar(i,:) = EulerFlux(PhiV)
+        ! FVbar(i,:) = SSFVdissipativeFlux(Phi(i,:), Phi(i+1,:))
     end do
 
     ! Linear combination of both fluxes
