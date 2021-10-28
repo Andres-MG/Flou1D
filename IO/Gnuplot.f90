@@ -16,6 +16,7 @@ module Gnuplot
     use TruncationErrorClass
     use Physics
     use Setup_routines
+    use ElementClass
 
     implicit none
 
@@ -68,6 +69,7 @@ subroutine Gnuplot_saveMesh(meshUnit, baseName, outCoords, vars, time, &
     real(wp), allocatable   :: vals(:,:)
     character(len=CHAR_LEN) :: tfmt
     character(len=CHAR_LEN) :: fmat
+    type(Elem_t), pointer   :: elem => null()
 
     ! Initialise
     nvars = size(vars)
@@ -102,8 +104,9 @@ subroutine Gnuplot_saveMesh(meshUnit, baseName, outCoords, vars, time, &
     call PDE%mesh%elems%reset_last(0)
     do i = 1, PDE%mesh%elems%size()
 
+        elem => PDE%mesh%elems%next()
+
         !---- Begin associate ----!
-        associate(elem => PDE%mesh%elems%next())
         associate(std  => elem%std)
 
         ! Get the output coordinates
@@ -142,8 +145,9 @@ subroutine Gnuplot_saveMesh(meshUnit, baseName, outCoords, vars, time, &
         write(meshUnit, *) ''
 
         end associate
-        end associate
         !----- End associate -----!
+
+        nullify(elem)
 
     end do
 
@@ -175,6 +179,7 @@ subroutine Gnuplot_saveMap(mapUnit, baseName, vars, time)
     integer                 :: k
     character(len=CHAR_LEN) :: tfmt
     character(len=CHAR_LEN) :: fmat
+    type(Elem_t), pointer   :: elem => null()
 
     ! Initialise
     if (time < 1.0_wp) then
@@ -203,8 +208,7 @@ subroutine Gnuplot_saveMap(mapUnit, baseName, vars, time)
     call PDE%mesh%elems%reset_last(0)
     do i = 1, PDE%mesh%elems%size()
 
-        !---- Begin associate ----!
-        associate(elem => PDE%mesh%elems%at(i))
+        elem => PDE%mesh%elems%at(i)
 
         ! Write header for the element
         write(mapUnit, '(a, i0)') "# ", elem%ID
@@ -218,10 +222,9 @@ subroutine Gnuplot_saveMap(mapUnit, baseName, vars, time)
         write(mapUnit, *) ''
         write(mapUnit, *) ''
 
-        end associate
-        !----- End associate -----!
-
     end do
+
+    nullify(elem)
 
 end subroutine Gnuplot_saveMap
 
