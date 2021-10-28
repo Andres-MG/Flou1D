@@ -29,14 +29,14 @@ pure subroutine kMeans(k, x, xAvg, clusters, info)
     integer              :: i
 
 
-    nDims = size(x, dim=1)
-    nPts  = size(x, dim=2)
+    nPts  = size(x, dim=1)
+    nDims = size(x, dim=2)
     allocate(prevClusters(nPts))
 
     ! Initial centroids
     do i = 1, k
         ind = floor( 1.0_wp + real(i-1, kind=wp)/(k-1) * (nPts-1) )
-        xAvg(:,i) = x(:,ind)
+        xAvg(i,:) = x(ind,:)
     end do
     call kMeans_compute_clusters(k, nDims, nPts, x, xAvg, clusters)
 
@@ -59,8 +59,8 @@ pure subroutine kMeans_compute_clusters(k, nDims, nPts, x, xAvg, clusters)
     integer,  intent(in)  :: k
     integer,  intent(in)  :: nDims
     integer,  intent(in)  :: nPts
-    real(wp), intent(in)  :: x(nDims,nPts)
-    real(wp), intent(in)  :: xAvg(nDims,k)
+    real(wp), intent(in)  :: x(nPts,nDims)
+    real(wp), intent(in)  :: xAvg(k,nDims)
     integer,  intent(out) :: clusters(nPts)
 
     !* Local variables *!
@@ -71,10 +71,10 @@ pure subroutine kMeans_compute_clusters(k, nDims, nPts, x, xAvg, clusters)
 
 
     do i = 1, nPts
-        minDist = norm2( x(:,i) - xAvg(:,1) )
+        minDist = norm2( x(i,:) - xAvg(1,:) )
         clusters(i) = 1
         do j = 2, k
-            dist = norm2( x(:,i) - xAvg(:,j) )
+            dist = norm2( x(i,:) - xAvg(j,:) )
             if (dist < minDist) then
                 minDist = dist
                 clusters(i) = j
@@ -89,23 +89,23 @@ pure subroutine kMeans_compute_centroids(k, nDims, nPts, x, xAvg, clusters)
     integer,  intent(in)  :: k
     integer,  intent(in)  :: nDims
     integer,  intent(in)  :: nPts
-    real(wp), intent(in)  :: x(nDims,nPts)
-    real(wp), intent(out) :: xAvg(nDims,k)
+    real(wp), intent(in)  :: x(nPts,nDims)
+    real(wp), intent(out) :: xAvg(k,nDims)
     integer,  intent(in)  :: clusters(nPts)
 
     !* Local variables *!
-    integer  :: i
-    real(wp) :: ptsInCluster(k)
+    integer :: i
+    integer :: ptsInCluster(k)
 
 
     xAvg = 0.0_wp
-    ptsInCluster = 0.0_wp
+    ptsInCluster = 0
     do i = 1, nPts
-        xAvg(:,clusters(i)) = xAvg(:,clusters(i)) + x(:,i)
-        ptsInCluster(clusters(i)) = ptsInCluster(clusters(i)) + 1.0_wp
+        xAvg(clusters(i),:) = xAvg(clusters(i),:) + x(i,:)
+        ptsInCluster(clusters(i)) = ptsInCluster(clusters(i)) + 1
     end do
     do i = 1, k
-        xAvg(:,i) = xAvg(:,i) / ptsInCluster(clusters(i))
+        xAvg(i,:) = xAvg(i,:) / real(ptsInCluster(i), kind=wp)
     end do
 
 end subroutine kMeans_compute_centroids

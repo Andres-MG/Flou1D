@@ -39,7 +39,6 @@ module Setup_params
     !           - SSWENO:        eSSWENOadvection
     !           - FV:            eFVadvection
     !           - SSFV:          eSSFVadvection
-    !           - Discontinuous: eDiscAdvection
     integer, parameter :: ADVECTION = eWeakAdvection
 
     !-> Advection of elements marked by the sensor
@@ -106,7 +105,7 @@ module Setup_params
     !-> Entropy-stable FV-DGSEM blending constant
     !       - Higher is "more" DGSEM
     !       - Lower is "more" FV
-    real(wp), parameter :: SSFVBLEND = 1e+1_wp
+    real(wp), parameter :: SSFVBLEND = 1e-1_wp
 
     !-> Spectral Vanishing Viscosity (SVV)
     !       Type of SVV

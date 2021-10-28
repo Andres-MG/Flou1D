@@ -22,7 +22,6 @@ module AdvectionOperators
     public :: AdvectionSSWENO
     public :: AdvectionSSFV
     public :: AdvectionFV
-    public :: AdvectionDiscontinuous
     public :: DGSEMadvection_Int
 
     abstract interface
@@ -563,7 +562,14 @@ subroutine AdvectionSSFV(mesh, elemID)
     integer  :: n
     real(wp) :: b
     real(wp) :: d
-    real(wp), allocatable :: Ftmp(:)
+    real(wp) :: Ftmp(NEQS)
+    real(wp) :: PhiLeft(NEQS)
+    real(wp) :: PhiRight(NEQS)
+    real(wp) :: jump(NEQS)
+    integer,  allocatable :: side(:)
+    real(wp), allocatable :: PhiAvg(:,:)
+    real(wp), allocatable :: PhiBar(:,:)
+    real(wp), allocatable :: PhiV(:,:)
     real(wp), allocatable :: FSbar(:,:)
     real(wp), allocatable :: FVbar(:,:)
     real(wp), allocatable :: Fbar(:,:)
@@ -596,11 +602,41 @@ subroutine AdvectionSSFV(mesh, elemID)
     end do
     FSbar = 2.0_wp * FSbar
 
+    ! Interpolate the complementary grid values
+    ! Clusters
+    ! allocate(PhiV, source=Phi)
+    ! allocate(PhiAvg(2, NEQS))
+    ! allocate(side(n))
+    ! call kMeans(2, PhiV, PhiAvg, side)
+
+    ! Remove the offset to get less oscillatory polynomials
+    ! jump = PhiAvg(2,:) - PhiAvg(1,:)
+    ! do i = 1, n
+    !     if (side(i) == 2) then
+    !         PhiV(i,:) = PhiV(i,:) - jump
+    !     end if
+    ! end do
+
+    ! Interpolate into the complementary grid
+    ! allocate(PhiBar(0:n, NEQS))
+    ! PhiBar = matmul(std%lh, PhiV)
+
     ! FV flux on the complementary grid
     allocate(FVbar(n-1, NEQS))
-
     do i = 1, n-1
-        FVbar(i,:) = SSFVdissipativeFlux(element%Phi(i,:), element%Phi(i+1,:))
+
+        ! if (side(i) == side(i+1)) then
+            PhiLeft  = Phi(i,:)
+            PhiRight = Phi(i+1,:)
+        ! else
+        !     PhiLeft  = PhiBar(i,:)
+        !     PhiRight = PhiBar(i,:)
+        !     if (side(i) == 2)   PhiLeft  = PhiLeft  + jump
+        !     if (side(i+1) == 2) PhiRight = PhiRight + jump
+        ! end if
+
+        FVbar(i,:) = SSFVdissipativeFlux(PhiLeft, PhiRight)
+
     end do
 
     ! Linear combination of both fluxes
@@ -681,124 +717,5 @@ function SSFVdissipativeFlux(PhiL, PhiR) result(Fv)
     Fv = Fv - l/2.0_wp * (PhiR-PhiL)
 
 end function SSFVdissipativeFlux
-
-!···············································································
-!> @author
-!> Andres Mateo
-!
-!  DESCRIPTION
-!> @brief
-!> Advection operator (discontinuous expansion) for the DGSEM.
-!
-!> @param[inout]  mesh    mesh with all the elements of the domain
-!> @param[in]     elemID  ID of the element where the operator acts
-!···············································································
-subroutine AdvectionDiscontinuous(mesh, elemID)
-    !* Arguments *!
-    integer, intent(in) :: elemID
-    ! Derived types
-    type(Mesh_t), intent(inout) :: mesh
-
-    !* Local variables *!
-    integer  :: i, j
-    integer  :: n
-    real(wp), allocatable :: DivF(:,:)
-    real(wp), allocatable :: Fa(:,:)
-    real(wp), allocatable :: Fb(:,:)
-    real(wp), allocatable :: Favg(:,:)
-    real(wp), allocatable :: jump(:)
-    integer,  allocatable :: side(:)
-    type(Elem_t), pointer :: element
-
-
-
-    ! Compute the $\alpha$ term as in the usual strong form, $\hat{D}_{ij}f_j
-
-    ! Compute the $\beta$ term with matrix `lh`, not forgetting
-    ! about the boundaries
-
-
-    !---- Begin associate ----!
-    element => mesh%elems%at(elemID)
-    associate(std       => element%std,                     &
-              faceLeft  => mesh%faces%at(element%faceLeft), &
-              faceRight => mesh%faces%at(element%faceRight))
-
-    n = std%n
-
-    allocate(Fa(NEQS, n))
-    allocate(Fb(NEQS, n))
-    allocate(Favg(NEQS, 2))
-    allocate(side(n))
-
-    ! Compute the fluxes
-    do i = 1, n
-        Fa(:,i) = EulerFlux(element%Phi(i,:))
-    end do
-
-    ! Clusters
-    call kMeans(2, Fa, Favg, side)
-
-    ! Compute $\alpha$ and $\beta$ coefficients (Side 1 as reference)
-    jump = Favg(:,2) - Favg(:,1)
-    do i = 1, n
-
-        if (side(i) == 2) then
-            Fb(:,i) = jump
-            Fa(:,i) = Fa(:,i) - Fb(:,i)
-        else
-            Fb(:,i) = 0.0_wp
-        end if
-
-    end do
-
-    deallocate(side)
-    allocate(DivF, mold=element%Phi)
-    DivF = 0.0_wp
-
-    ! Interior values ($\alpha$)
-    do j = 1, n
-        do i = 1, n
-            DivF(i,:) = DivF(i,:) + std%Dh(i,j) * Fa(:,j)
-        end do
-    end do
-
-    ! Interior values ($\beta$ with $\gamma^{\pm}=1$)
-    do j = 1, n
-        do i = 1, n
-            if (j == 1) then
-                DivF(i,:) = DivF(i,:) + (1.0_wp*std%lh(i,j-1)-std%lh(i,j)) * Fb(:,j) * std%iw(i)
-            else if (j == n) then
-                DivF(i,:) = DivF(i,:) + (std%lh(i,j-1)-1.0_wp*std%lh(i,j)) * Fb(:,j) * std%iw(i)
-            else
-                DivF(i,:) = DivF(i,:) + (std%lh(i,j-1)-std%lh(i,j)) * Fb(:,j) * std%iw(i)
-            end if
-        end do
-    end do
-
-    ! Add boundary flux
-    if (std%hasBounds) then
-
-        DivF(1,:) = DivF(1,:) - faceLeft%EF  * std%iw(1)
-        DivF(n,:) = DivF(n,:) + faceRight%EF * std%iw(n)
-
-    else
-
-        do i = 1, NEQS
-            DivF(:,i) = DivF(:,i) + ( faceRight%EF(i) * std%bdMode(eRight,:) &
-                      - faceLeft%EF(i) * std%bdMode(eLeft,:) ) * std%iw
-        end do
-
-    end if
-
-    ! Add the advection contribution to the time derivative
-    element%PhiD = element%PhiD - DivF
-
-    end associate
-    !----- End associate -----!
-
-    nullify(element)
-
-end subroutine AdvectionDiscontinuous
 
 end module AdvectionOperators

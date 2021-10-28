@@ -179,9 +179,6 @@ subroutine PDE_constructor(this, k, n, nodeType, periodic, advection, &
         end if
         this%advect => AdvectionSSFV
 
-    case (eDiscAdvection)
-        this%advect => AdvectionDiscontinuous
-
     case default
         call printError("PDEclass.f90", &
             "The requested advection operator is not implemented.")
@@ -223,9 +220,6 @@ subroutine PDE_constructor(this, k, n, nodeType, periodic, advection, &
                 "The DGSEM with entropy-stable FV requires Gauss-Lobatto nodes.")
         end if
         this%sensAdvect => AdvectionSSFV
-
-    case (eDiscAdvection)
-        this%sensAdvect => AdvectionDiscontinuous
 
     case default
         this%sensAdvect => this%advect
@@ -409,7 +403,7 @@ subroutine PDE_element_time_derivative(this, time, ind, isolated)
     end if
 
     ! Calculate the advective term
-    if (elem%sensed) then
+    if (elem%saturated) then
         call this%sensAdvect(this%mesh, elem%ID)
     else
         call this%advect(this%mesh, elem%ID)

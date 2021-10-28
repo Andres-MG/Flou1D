@@ -57,7 +57,6 @@ module Constants
     integer, parameter :: eSSWENOadvection = 64
     integer, parameter :: eFVadvection     = 65
     integer, parameter :: eSSFVadvection   = 66
-    integer, parameter :: eDiscAdvection   = 67
 
     ! Enum: gradient formulation
     integer, parameter :: eWeakGradient   = 70

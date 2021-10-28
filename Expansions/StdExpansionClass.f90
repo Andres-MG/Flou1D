@@ -134,10 +134,7 @@ subroutine StdExp_constructor(this, n, Psvv)
     end do
 
     ! Interpolation coefficients at the nodes of the complementary grid
-    do i = 0, n
-        call lagrange_interpolating_polynomials(n, this%xc(i), this%x, &
-                                                this%wb, this%lh(:,i))
-    end do
+    call polynomial_interpolation_matrix(n, this%x, this%wb, n+1, this%xc, this%lh)
 
     ! Values of the Lagrange-Legendre transforms and their norms
     ! Loop over the polynomial orders
@@ -235,7 +232,7 @@ subroutine StdExp_allocator(this, n, allocHsvv)
     allocate(this%bdMode(2, n), source=0.0_wp)
     allocate(this%x(n), source=0.0_wp)
     allocate(this%xc(0:n), source=0.0_wp)
-    allocate(this%lh(n, 0:n), source=0.0_wp)
+    allocate(this%lh(0:n, n), source=0.0_wp)
     allocate(this%avgInp(n, n), source=0.0_wp)
     allocate(this%w(n), source=0.0_wp)
     allocate(this%iw(n), source=0.0_wp)
