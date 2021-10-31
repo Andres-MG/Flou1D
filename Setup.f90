@@ -15,8 +15,8 @@ module Setup_params
     implicit none
 
     ! Parameters of the simulation
-    integer,  parameter :: P        = 12                ! Initial expansion order (P)
-    integer,  parameter :: K        = 20                ! Number of elements
+    integer,  parameter :: P        = 7                 ! Initial expansion order (P)
+    integer,  parameter :: K        = 50                ! Number of elements
     real(wp), parameter :: MAXRES   = 1e-8_wp           ! Max residual allowed
     real(wp), parameter :: TSPAN(2) = [0.0_wp, 0.18_wp] ! Time span
     real(wp), parameter :: TSTEP    = 1e-4_wp           ! Time step
@@ -105,7 +105,7 @@ module Setup_params
     !-> Entropy-stable FV-DGSEM blending constant
     !       - Higher is "more" DGSEM
     !       - Lower is "more" FV
-    real(wp), parameter :: SSFVBLEND = 1e-1_wp
+    real(wp), parameter :: SSFVBLEND = 1e+2_wp
 
     !-> Spectral Vanishing Viscosity (SVV)
     !       Type of SVV
@@ -142,7 +142,7 @@ module Setup_params
     !               |____./ .  .
     !               |____.__.__._____ Sensor
     !
-    real(wp), parameter :: RAMPTOP         =  1.0_wp  !-8.0_wp
+    real(wp), parameter :: RAMPTOP         =  0.0_wp  !-8.0_wp
     real(wp), parameter :: RAMPBOTTOM      = -2.0_wp  !-10.0_wp
     real(wp), parameter :: SECRAMPTOP      = -1.0_wp
     real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp

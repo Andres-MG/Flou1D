@@ -563,7 +563,8 @@ subroutine AdvectionSSFV(mesh, elemID)
     real(wp) :: b
     real(wp) :: d
     real(wp) :: Ftmp(NEQS)
-    real(wp) :: PhiV(NEQS)
+    real(wp), allocatable :: PhiLeft(:,:)
+    real(wp), allocatable :: PhiRight(:,:)
     real(wp), allocatable :: FSbar(:,:)
     real(wp), allocatable :: FVbar(:,:)
     real(wp), allocatable :: Fbar(:,:)
@@ -598,10 +599,12 @@ subroutine AdvectionSSFV(mesh, elemID)
 
     ! FV flux on the complementary grid
     allocate(FVbar(n-1, NEQS))
+    allocate(PhiLeft, mold=Phi)
+    allocate(PhiRight, mold=Phi)
+
+    call reconstruct(Phi, std%x, std%xc, PhiLeft, PhiRight)
     do i = 1, n-1
-        PhiV = Phi(i,:) + (Phi(i+1,:)-Phi(i,:))/(std%x(i+1)-std%x(i))*(std%xc(i)-std%x(i))
-        FVbar(i,:) = EulerFlux(PhiV)
-        ! FVbar(i,:) = SSFVdissipativeFlux(Phi(i,:), Phi(i+1,:))
+        FVbar(i,:) = SSFVdissipativeFlux(PhiRight(i,:), PhiLeft(i+1,:))
     end do
 
     ! Linear combination of both fluxes
@@ -646,17 +649,6 @@ subroutine AdvectionSSFV(mesh, elemID)
 
 end subroutine AdvectionSSFV
 
-!···············································································
-!> @author
-!> Andres Mateo
-!
-!  DESCRIPTION
-!> @brief
-!> Dissipative flux (LxF) to be added to the SC flux in the SSFV formulation.
-!
-!> @param[in]  PhiL  Values on the left side of the complementary face
-!> @param[in]  PhiR  Values on the right side of the complementary face
-!···············································································
 function SSFVdissipativeFlux(PhiL, PhiR) result(Fv)
     !* Arguments *!
     real(wp), intent(in) :: PhiL(NEQS)
@@ -682,5 +674,51 @@ function SSFVdissipativeFlux(PhiL, PhiR) result(Fv)
     Fv = Fv - l/2.0_wp * (PhiR-PhiL)
 
 end function SSFVdissipativeFlux
+
+subroutine reconstruct(Phi, x, xc, PhiL, PhiR)
+    !* Arguments *!
+    real(wp), intent(in)  :: Phi(:,:)
+    real(wp), intent(in)  :: x(:)
+    real(wp), intent(in)  :: xc(0:)
+    real(wp), intent(out) :: PhiL(:,:)
+    real(wp), intent(out) :: PhiR(:,:)
+
+    !* Local variables *!
+    integer  :: n
+    integer  :: i
+    real(wp) :: psi(NEQS)
+
+
+    n = size(x)
+
+    ! First node (PhiR = Phi for GLL nodes)
+    PhiL(1,:) = 0.0_wp
+    PhiR(1,:) = Phi(1,:) + (Phi(2,:)-Phi(1,:))/(x(2)-x(1)) * (xc(0)-x(1))
+
+    do i = 2, n-1
+        psi = limiter((Phi(i,:)-Phi(i-1,:))/(x(i)-x(i-1)), (Phi(i+1,:)-Phi(i,:))/(x(i+1)-x(i)))
+        PhiL(i,:) = Phi(i,:) + psi * (xc(i-1)-x(i))
+        PhiR(i,:) = Phi(i,:) + psi * (xc(i)-x(i))
+    end do
+
+    ! Last node (PhiL = Phi for GLL nodes)
+    PhiL(n,:) = Phi(n,:) + (Phi(n,:)-Phi(n-1,:))/(x(n)-x(n-1)) * (xc(n)-x(n))
+    PhiR(n,:) = 0.0_wp
+
+end subroutine reconstruct
+
+elemental function limiter(xl, xr)
+    !* Arguments *!
+    real(wp), intent(in) :: xl
+    real(wp), intent(in) :: xr
+
+    !* Return values *!
+    real(wp) :: limiter
+
+
+    limiter = min(xl, xr)
+    limiter = max(0.0_wp, limiter)
+
+end function limiter
 
 end module AdvectionOperators
