@@ -438,7 +438,8 @@ subroutine PDE_compute_max_residual(this)
     class(PDE_t), target, intent(inout) :: this
 
     !* Local variables *!
-    integer :: i
+    integer               :: i
+    type(Elem_t), pointer :: elem => null()
 
     !--- Begin associate ---!
     associate(mesh => this%mesh)
@@ -448,12 +449,13 @@ subroutine PDE_compute_max_residual(this)
     call mesh%elems%reset_last(0)
     do i = 1, mesh%elems%size()
 
-        associate(elem => mesh%elems%next())
-            this%maxResidual = max(this%maxResidual, &
-                                   maxval(abs(elem%PhiD)))
-        end associate
+        elem => mesh%elems%next()
+        this%maxResidual = max(this%maxResidual, &
+                               maxval(abs(elem%PhiD)))
 
     end do
+
+    nullify(elem)
 
     end associate
     !----- End associate -----!
@@ -477,8 +479,9 @@ subroutine PDE_compute_CFL_number(this, dt)
     class(PDE_t), intent(inout) :: this
 
     !* Local variables *!
-    integer  :: i
-    real(wp) :: tmpCFL
+    integer               :: i
+    real(wp)              :: tmpCFL
+    type(Elem_t), pointer :: elem => null()
 
     !--- Begin associate ---!
     associate(mesh => this%mesh)
@@ -490,9 +493,8 @@ subroutine PDE_compute_CFL_number(this, dt)
     call mesh%elems%reset_last(0)
     do i = 1, mesh%elems%size()
 
-        associate(elem => mesh%elems%next())
-            tmpCFL = elem%computeCFL(dt)
-        end associate
+        elem => mesh%elems%next()
+        tmpCFL = elem%computeCFL(dt)
 
         ! Select the maximum CFL number
         if (tmpCFL > this%maxCFL) then
@@ -501,6 +503,8 @@ subroutine PDE_compute_CFL_number(this, dt)
         end if
 
     end do
+
+    nullify(elem)
 
     end associate
     !----- End associate -----!
