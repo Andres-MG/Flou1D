@@ -302,12 +302,17 @@ function aliasingSensor(elem, time)
     do j = 1, n
         do i = 1, n
             aliasing(i,:) = aliasing(i,:) + elem%std%D(i,j) * (2.0_wp*Fs(i,j,:) - Fs(j,j,:))
+            aliasing(i,:) = abs(aliasing(i,:))
         end do
     end do
 
     ! Aliasing error estimation
-    aliasing = abs(aliasing)
-    aliasingSensor = log10( maxval(aliasing) )
+    aliasingSensor = maxval(aliasing)
+    if (aliasingSensor == 0.0_wp) then
+        aliasingSensor = MIN_SENSOR
+    else
+        aliasingSensor = log10(aliasingSensor)
+    end if
 
 end function aliasingSensor
 
