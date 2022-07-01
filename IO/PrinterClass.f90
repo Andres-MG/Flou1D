@@ -122,14 +122,14 @@ subroutine Printer_constructor(this, meshName, outRes)
         this%saveMesh_deferred => Gnuplot_saveMesh
         this%saveMap_deferred  => Gnuplot_saveMap
 
-    case (".plt")
+    case (".dat")
         this%fileType = eTecPlot
         this%saveMesh_deferred => TecPlot_saveMesh
         this%saveMap_deferred  => TecPlot_saveMap
 
     case default
         call printError("PrinterClass.f90", &
-                        "Implemented export formats are '.gp' and '.plt'.")
+                        "Implemented export formats are '.gp' and '.dat'.")
 
     end select
 
