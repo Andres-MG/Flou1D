@@ -13,10 +13,12 @@ module SensorClass
     use Constants
     use Utilities
     use PDEclass
+    use MeshClass
     use ElementClass
     use TruncationErrorClass
     use ExceptionsAndMessages
     use Physics
+    use Clustering, only: kMeans
 
     implicit none
 
@@ -54,10 +56,9 @@ module SensorClass
         real(wp) :: secMax
         real(wp) :: secS0
         real(wp) :: secDelta
-        procedure(Sensor_Int), private, &
-            pointer, nopass :: mainSensor => null()
-        procedure(Sensor_Int), private, &
-            pointer, nopass :: secSensor  => null()
+        procedure(SensorGlobal_Int), private, pointer, nopass :: globalSensor => null()
+        procedure(Sensor_Int),       private, pointer, nopass :: mainSensor   => null()
+        procedure(Sensor_Int),       private, pointer, nopass :: secSensor    => null()
     contains
         procedure :: construct  => Sensor_constructor
         procedure :: sense      => Sensor_compute_sensor
@@ -66,6 +67,11 @@ module SensorClass
     end type Sensor_t
 
     abstract interface
+        subroutine SensorGlobal_Int(mesh, time)
+            import wp, Mesh_t
+            type(Mesh_t),   intent(inout) :: mesh
+            real(wp),       intent(in)    :: time
+        end subroutine SensorGlobal_Int
         function Sensor_Int(elem, time)
             import wp, Elem_t
             type(Elem_t), intent(inout) :: elem
@@ -139,6 +145,9 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     case (eJumpSensor)
         this%mainSensor => jumpSensor
 
+    case (eClusterSensor)
+        this%globalSensor => clusteringSensor
+
     case default
         call printError("SensorClass.f90", &
                         "The selected sensor is not available.")
@@ -163,6 +172,8 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     case (eJumpSensor)
         this%secSensor => jumpSensor
 
+    case (eClusterSensor)
+
     case default
         call printError("SensorClass.f90", &
                         "The selected secondary sensor is not available.")
@@ -177,6 +188,35 @@ end subroutine Sensor_constructor
 !
 !  DESCRIPTION
 !> @brief
+!> Map the "raw" sensor value to the [0, 1] region.
+!
+!> @param[in]  elem       element where the sensor was computed
+!> @param[in]  sensedVal  value of the sensor
+!···············································································
+function Sensor_rescale_element(this, elem, sensedVal) result(scaledVal)
+    !* Arguments *!
+    real(wp), intent(in) :: sensedVal
+    ! Derived types
+    type(Sensor_t), intent(in) :: this
+    type(Elem_t),   intent(in) :: elem
+
+    !* Return values *!
+    real(wp) :: scaledVal
+
+    if (elem%std%n > 1) then
+        scaledVal = sinRamp(sensedVal-this%mainS0, this%mainDelta)
+    else
+        scaledVal = sinRamp(sensedVal-this%secS0, this%secDelta)
+    end if
+
+end function Sensor_rescale_element
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
 !> Wrapper over the different sensor implementations. It applies the main sensor
 !> to the elements with \f$ P>0 \f$ and the secondary one, to those with
 !> \f$ P=0 \f$.
@@ -184,36 +224,24 @@ end subroutine Sensor_constructor
 !> @param[in]   elem       element where the sensor is computed
 !> @param[in]   time       time instant
 !> @param[out]  sensedVal  value of the sensor
-!> @param[out]  scaledVal  value of the sensor after scaling (optional)
 !···············································································
-subroutine Sensor_compute_sensor(this, elem, time, sensedVal, scaledVal)
+function Sensor_compute_sensor(this, elem, time) result(sensedVal)
     !* Arguments *!
-    real(wp),           intent(in)  :: time
-    real(wp),           intent(out) :: sensedVal
-    real(wp), optional, intent(out) :: scaledVal
+    real(wp), intent(in)  :: time
     ! Derived types
     class(Sensor_t), intent(in)    :: this
     type(Elem_t),    intent(inout) :: elem
 
-    ! Call the main sensor on elements with P > 1
-    if (elem%std%n > 1) then
+    !* Return values *!
+    real(wp) :: sensedVal
+
+    if (elem%std%n > 1 .and. associated(this%mainSensor)) then
         sensedVal = this%mainSensor(elem, time)
-
-        if (present(scaledVal)) then
-            scaledVal = sinRamp(sensedVal-this%mainS0, this%mainDelta)
-        end if
-
-    ! Apply the secondary sensor to the constant elements
-    else
+    else if (elem%std%n == 1 .and. associated(this%secSensor)) then
         sensedVal = this%secSensor(elem, time)
-
-        if (present(scaledVal)) then
-            scaledVal = sinRamp(sensedVal-this%secS0, this%secDelta)
-        end if
-
     end if
 
-end subroutine Sensor_compute_sensor
+end function Sensor_compute_sensor
 
 !···············································································
 !> @author
@@ -238,22 +266,28 @@ subroutine Sensor_update_sensor_values(this, time, scaled)
     real(wp) :: rescaled
     type(Elem_t), pointer :: elem
 
+    ! Global sensor
+    if (associated(this%globalSensor)) then
+        call this%globalSensor(PDE%mesh, time)
+    end if
+
     ! Loop over all the elements
     call PDE%mesh%elems%reset_last(0)
     do i = 1, PDE%mesh%elems%size()
 
         elem => PDE%mesh%elems%next()
-        call this%sense(elem, time, elem%sens, rescaled)
+
+        if (associated(this%globalSensor)) then
+            rescaled = elem%sens
+        else
+            elem%sens = this%sense(elem, time)
+            rescaled = Sensor_rescale_element(this, elem, elem%sens)
+        end if
         if (scaled) elem%aVis = rescaled
 
         ! Mark elements detected by the sensor
-        if (elem%std%n > 1) then
-            elem%sensed    = merge(.true., .false., rescaled >  0.0_wp)
-            elem%saturated = merge(.true., .false., rescaled >= 1.0_wp)
-        else
-            elem%sensed    = merge(.true., .false., rescaled >  0.0_wp)
-            elem%saturated = merge(.true., .false., rescaled >= 1.0_wp)
-        end if
+        elem%sensed    = merge(.true., .false., rescaled >  0.0_wp)
+        elem%saturated = merge(.true., .false., rescaled >= 1.0_wp)
 
     end do
 
@@ -523,6 +557,116 @@ function jumpSensor(elem, time)
     !----- End associate -----!
 
 end function jumpSensor
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Sensor using clustering algorithms
+!> (based on the degree thesis of Carlos Piqueras)
+!
+!> @param[inout]  mesh  mesh with all the elements to be sensed
+!> @param[in]     time  time instant
+!···············································································
+subroutine clusteringSensor(mesh, time)
+    !* Arguments *!
+    real(wp), intent(in) :: time
+    ! Derived types
+    type(Mesh_t),   intent(inout) :: mesh
+
+    !* Local variables *!
+    integer :: ie, i
+    type(Elem_t), pointer :: elem
+
+    integer  :: nnodes
+    integer  :: cnt
+    integer  :: n
+    real(wp) :: p1, p2
+    real(wp) :: dx
+    real(wp) :: minimum, maximum
+    real(wp) :: centroids(3,2)
+    real(wp), allocatable :: derivs(:,:)
+    integer,  allocatable :: clusters(:)
+
+    ! Compute derivatives
+    nnodes = 0
+    call mesh%elems%reset_last(0)
+    do ie = 1, mesh%elems%size()
+        elem => mesh%elems%next()
+        nnodes = nnodes + elem%std%n
+    end do
+    allocate(derivs(nnodes,2))  ! (rhox, px)
+    allocate(clusters(nnodes))
+
+    cnt = 0
+    call mesh%elems%reset_last(0)
+    do ie = 1, mesh%elems%size()
+
+        elem => mesh%elems%next()
+        n = elem%std%n
+
+        cnt = cnt + 1
+        dx = (elem%x(2) - elem%x(1))
+        p1 = getPressure(elem%Phi(1,:))
+        p2 = getPressure(elem%Phi(2,:))
+        derivs(cnt,1) = (elem%Phi(2,1) - elem%Phi(1,1)) / dx
+        derivs(cnt,2) = (p2 - p1) / dx
+
+        do i = 2, n-1
+            cnt = cnt + 1
+            dx = 2.0_wp * (elem%x(i+1) - elem%x(i-1))
+            p1 = getPressure(elem%Phi(i-1,:))
+            p2 = getPressure(elem%Phi(i+1,:))
+            derivs(cnt,1) = (elem%Phi(i+1,1) - elem%Phi(i-1,1)) / dx
+            derivs(cnt,2) = (p2 - p1) / dx
+        end do
+
+        cnt = cnt + 1
+        dx = (elem%x(n) - elem%x(n-1))
+        p1 = getPressure(elem%Phi(n-1,:))
+        p2 = getPressure(elem%Phi(n,:))
+        derivs(cnt,1) = (elem%Phi(n,1) - elem%Phi(n-1,1)) / dx
+        derivs(cnt,2) = (p2 - p1) / dx
+
+    end do
+
+    ! Rescale the derivatives for clustering
+    derivs = abs(derivs)
+    minimum = minval(derivs(:,1))
+    maximum = maxval(derivs(:,1))
+    derivs(:,1) = (derivs(:,1) - minimum) / (maximum - minimum)
+
+    minimum = minval(derivs(:,2))
+    maximum = maxval(derivs(:,2))
+    derivs(:,2) = (derivs(:,2) - minimum) / (maximum - minimum) * 20.0_wp
+
+    ! Make clusters
+    centroids(1,:) = [minval(derivs(:,1)), minval(derivs(:,2))]
+    centroids(3,:) = [maxval(derivs(:,1)), maxval(derivs(:,2))]
+    centroids(2,:) = (centroids(1,:) + centroids(3,:)) / 2.0_wp
+    call kMeans(3, derivs, centroids, clusters)
+
+    ! Assign sensor value according to clusters
+    cnt = 0
+    call mesh%elems%reset_last(0)
+    do ie = 1, mesh%elems%size()
+        elem => mesh%elems%next()
+        n = elem%std%n
+        if (any(clusters(cnt+1:cnt+n) == 3)) then
+            elem%sens = 1.0_wp
+        else if (any(clusters(cnt+1:cnt+n) == 2)) then
+            elem%sens = 0.5_wp
+        else
+            elem%sens = 0.0_wp
+        end if
+        cnt = cnt + n
+    end do
+
+    nullify(elem)
+
+end subroutine clusteringSensor
 
 !···············································································
 !> @author

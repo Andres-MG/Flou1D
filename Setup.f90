@@ -15,13 +15,13 @@ module Setup_params
     implicit none
 
     ! Parameters of the simulation
-    integer,  parameter :: P        = 7                 ! Initial expansion order (P)
-    integer,  parameter :: K        = 50                ! Number of elements
+    integer,  parameter :: P        = 9                 ! Initial expansion order (P)
+    integer,  parameter :: K        = 20                ! Number of elements
     real(wp), parameter :: MAXRES   = 1e-8_wp           ! Max residual allowed
     real(wp), parameter :: TSPAN(2) = [0.0_wp, 0.18_wp] ! Time span
     real(wp), parameter :: TSTEP    = 1e-4_wp           ! Time step
     logical,  parameter :: PERIODIC = .false.           ! Periodic BCs
-    integer,  parameter :: SAVEINT  = 0                 ! Steps between prints
+    integer,  parameter :: SAVEINT  = 100               ! Steps between prints
     integer,  parameter :: SAVERES  = 0                 ! Points per element
     integer,  parameter :: CFLSTEP  = 400               ! Steps between CFL
 
@@ -39,13 +39,13 @@ module Setup_params
     !           - SSWENO:        eSSWENOadvection
     !           - FV:            eFVadvection
     !           - SSFV:          eSSFVadvection
-    integer, parameter :: ADVECTION = eWeakAdvection
+    integer, parameter :: ADVECTION = eSplitAdvection
 
     !-> Advection of elements marked by the sensor
     !           - Same as above: fNone
     !           - Weak:          eWeakAdvection
     !           - ...
-    integer, parameter :: SENSEDADVECTION = eSSFVadvection
+    integer, parameter :: SENSEDADVECTION = fNone
 
     !       Gradients
     !           - Weak:   eWeakGradient
@@ -81,7 +81,7 @@ module Setup_params
     !-> Time integration method
     !       - Runge-Kutta 3: eRK3
     !       - Runge-Kutta 5: eRK5
-    integer,  parameter :: INT_METHOD = eRK5
+    integer,  parameter :: INT_METHOD = eRK3
 
     !-> Physical parameters
     !       Euler equations
@@ -97,9 +97,9 @@ module Setup_params
     !       - Laplacian flux:                eLaplacianVisc
     !       - GP flux w/ physical variables: eGuermondPhysical
     !       - GP flux w/ entropy variables:  eGuermondEntropy
-    integer,  parameter :: ARTVISC      = fNone
-    real(wp), parameter :: ALPHAMAX     = 0.0001_wp * (P+1) * K
-    real(wp), parameter :: ALPHA2BETA   = 10.0_wp
+    integer,  parameter :: ARTVISC      = eGuermondEntropy
+    real(wp), parameter :: ALPHAMAX     = 0.0003_wp * (P+1) * K
+    real(wp), parameter :: ALPHA2BETA   = 1.0_wp
     real(wp), parameter :: ALPHA2LAMBDA = 0.0_wp
 
     !-> Entropy-stable FV-DGSEM blending constant
@@ -114,9 +114,9 @@ module Setup_params
     !
     !       - SVVPOW: Exponent of the filtering law (i/P)**SVVPOW
     integer,  parameter :: SVVTYPE         = fNone
-    integer,  parameter :: SVVPOW          = 2
+    integer,  parameter :: SVVPOW          = 1
     real(wp), parameter :: ALPHASVV        = 0.0001_wp
-    real(wp), parameter :: ALPHA2BETASVV   = 10.0_wp
+    real(wp), parameter :: ALPHA2BETASVV   = 1.0_wp
     real(wp), parameter :: ALPHA2LAMBDASVV = 0.0_wp
 
     !-> Sensor definition
@@ -126,7 +126,8 @@ module Setup_params
     !           - Modal sensor:     eModalSensor
     !           - Density sensor:   eDensitySensor
     !           - Jump sensor:      eJumpSensor
-    integer, parameter :: SENSORTYPE    = eAliasingSensor
+    !           - Cluster sensor:   eClusterSensor
+    integer, parameter :: SENSORTYPE    = eClusterSensor
     integer, parameter :: SECSENSORTYPE = eJumpSensor
 
     !       Shape of the activation function
@@ -142,8 +143,8 @@ module Setup_params
     !               |____./ .  .
     !               |____.__.__._____ Sensor
     !
-    real(wp), parameter :: RAMPTOP         =  0.0_wp  !-8.0_wp
-    real(wp), parameter :: RAMPBOTTOM      = -2.0_wp  !-10.0_wp
+    real(wp), parameter :: RAMPTOP         = -8.0_wp !-10.0_wp
+    real(wp), parameter :: RAMPBOTTOM      = -15.0_wp !-20.0_wp
     real(wp), parameter :: SECRAMPTOP      = -1.0_wp
     real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp
     integer,  parameter :: SENSORWINDOW(2) = [0, huge(1)]
@@ -154,7 +155,7 @@ module Setup_params
     !           - rho:   1
     !           - rho*u: 2
     !           - rho*e: 3
-    integer, parameter :: SENSEDVAR = 1
+    integer, parameter :: SENSEDVAR = 0
 
     !       Unsteady correction of the truncation error
     logical, parameter :: TECORRECTION = .true.
@@ -166,7 +167,7 @@ module Setup_params
     integer, parameter :: TRUNCERRORTYPE = eIsolatedLocalTrunc
 
     !       Compute the truncation error map
-    logical, parameter :: TEMAP      = .true.
+    logical, parameter :: TEMAP      = .false.
     integer, parameter :: LOWERLIMIT = 1
 
     ! -> WENO stencil size
@@ -296,8 +297,8 @@ subroutine initialCondition(x, Phi)
     real(wp), intent(out) :: Phi(:,:)
 
     !call MMSexact(x, 0.0_wp, Phi)
-    !call SodsTubeIC(x, Phi)
-    call ShuOsherIC(x, gamma, Phi)
+    call SodsTubeIC(x, Phi)
+    ! call ShuOsherIC(x, gamma, Phi)
 
 end subroutine initialCondition
 
@@ -326,8 +327,8 @@ subroutine externalState(x, t, PhiInt, gradInt, PhiExt, gradExt)
     real(wp), intent(out)   :: gradExt(:)
 
     !call MMSexact(x, t, PhiExt)
-    !call SodsTubeIC(x, PhiExt)
-    call ShuOsherIC(x, gamma, PhiExt)
+    call SodsTubeIC(x, PhiExt)
+    ! call ShuOsherIC(x, gamma, PhiExt)
 
     gradExt = gradInt
 
