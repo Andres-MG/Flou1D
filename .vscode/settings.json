@@ -1,0 +1,7 @@
+{
+    "fortran.linter.modOutput": "${workspaceFolder}/build/obj",
+    "fortran.linter.includePaths": [
+        "${workspaceFolder}/build/obj"
+    ],
+    "cmake.configureOnOpen": false,
+}
