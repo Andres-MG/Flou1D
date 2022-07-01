@@ -66,4 +66,4 @@ endif()
 
 # We can do better than this...
 file(GLOB_RECURSE SOURCES src/*.f90)
-add_executable(solver ${SOURCES})
+add_executable(flou1d ${SOURCES})
