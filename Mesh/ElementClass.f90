@@ -189,8 +189,8 @@ subroutine Element_constructor(this, xL, xR, nNodes, WENOsize, nType, pos)
     this%saturated = .false.
 
     ! Coordinates
-    this%x  = (this%std%x  + 1.0_wp) / 2.0_wp * (xR - xL) + xL
-    this%xc = (this%std%xc + 1.0_wp) / 2.0_wp * (xR - xL) + xL
+    this%x  = (this%std%x  + 1.0_wp) / 2.0_wp * this%dx + xL
+    this%xc = (this%std%xc + 1.0_wp) / 2.0_wp * this%dx + xL
 
     ! Allocate the rest of the attributes
     allocate(this%Terr(this%std%n-1, NEQS), source=0.0_wp)
@@ -609,6 +609,8 @@ subroutine Element_assignment(lhs, rhs)
     lhs%elemRight = rhs%elemRight
     lhs%sensed    = rhs%sensed
     lhs%saturated = rhs%saturated
+    lhs%x         = rhs%x
+    lhs%xc        = rhs%xc
     lhs%Terr      = rhs%Terr
     lhs%PhiD      = rhs%PhiD
     lhs%Src       = rhs%Src
