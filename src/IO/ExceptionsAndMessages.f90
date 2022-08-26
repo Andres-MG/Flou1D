@@ -21,6 +21,9 @@ module ExceptionsAndMessages
     public :: printError
     public :: printWarning
     public :: printInfo
+    public :: assertError
+    public :: assertWarning
+    public :: assertInfo
 
     ! Local variables
     character, parameter :: ESC = achar(27)
@@ -45,7 +48,7 @@ subroutine printError(failedMod, msg)
 
     write(stderr,'(a,a,a,a)') '['//ESC//"[31mError"//ESC//"[0m] ", &
                               failedMod, " -> ", msg
-#ifdef DEBUG
+#ifndef NDEBUG
     error stop
 #else
     stop
@@ -94,5 +97,75 @@ subroutine printInfo(infoMod, msg)
                               infoMod, " -> ", msg
 
 end subroutine printInfo
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Prints an error message and stops the execution of the program (only debug).
+!
+!> @param[in]  failedMod  name of the module where the error took place
+!> @param[in]  msg        error message to print
+!···············································································
+subroutine assertError(failedMod, msg)
+    !* Arguments *!
+    character(len=*), intent(in) :: failedMod
+    character(len=*), intent(in) :: msg
+
+#ifndef NDEBUG
+    write(stderr,'(a,a,a,a)') '['//ESC//"[31mAssert Error"//ESC//"[0m] ", &
+                              failedMod, " -> ", msg
+    error stop
+#endif
+
+end subroutine assertError
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Prints a warning message (only debug).
+!
+!> @param[in]  failedMod  name of the module where the warning took place
+!> @param[in]  msg        warning message to print
+!···············································································
+subroutine assertWarning(failedMod, msg)
+    !* Arguments *!
+    character(len=*), intent(in) :: failedMod
+    character(len=*), intent(in) :: msg
+
+#ifndef NDEBUG
+    write(stderr,'(a,a,a,a)') '['//ESC//"[33mAssert Warning"//ESC//"[0m] ", &
+                              failedMod, ' -> ', msg
+#endif
+
+end subroutine assertWarning
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Prints an informative message (only debug).
+!
+!> @param[in]  infoMod  name of the module where the error took place
+!> @param[in]  msg      info message to print
+!···············································································
+subroutine assertInfo(infoMod, msg)
+    !* Arguments *!
+    character(len=*), intent(in) :: infoMod
+    character(len=*), intent(in) :: msg
+
+#ifndef NDEBUG
+    write(stdout,'(a,a,a,a)') '['//ESC//"[32mAssert Info"//ESC//"[0m] ", &
+                              infoMod, " -> ", msg
+#endif
+
+end subroutine assertInfo
 
 end module ExceptionsAndMessages
