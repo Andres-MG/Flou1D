@@ -23,6 +23,7 @@ module Constants
 
     !! Numerical constants
     real(wp), parameter :: PI       = acos(-1.0_wp)
+    real(wp), parameter :: PI2      = 2.0_wp * PI
     real(wp), parameter :: FLT_EPS  = epsilon(1.0_wp)
     integer,  parameter :: CHAR_LEN = 100
 
