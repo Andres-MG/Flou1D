@@ -1,0 +1,7 @@
+{
+  "incremental_sync": true,
+  "lowercase_intrinsics": true,
+  "hover_signature": true,
+  "use_signature_help": true,
+  "excl_paths": [".git", ".vscode", "build"],
+}
