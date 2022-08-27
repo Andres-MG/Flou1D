@@ -50,15 +50,21 @@ module Utilities
 
 contains
 
-elemental function almost_zero(a)
+elemental function almost_zero(a, tol)
     !* Arguments *!
-    real(wp), intent(in) :: a
+    real(wp),           intent(in) :: a
+    real(wp), optional, intent(in) :: tol
 
     !* Return value *!
     logical :: almost_zero
 
+    !* Local variables *!
+    real(wp) :: tol_
+
+    tol_ = merge(tol, 2.0_wp*FLT_EPS, present(tol))
+
     ! Absolute difference
-    if (abs(a) <= 2.0_wp*FLT_EPS) then
+    if (abs(a) <= tol_) then
         almost_zero = .true.
     else
         almost_zero = .false.
