@@ -20,6 +20,10 @@ module Utilities
     public :: linear_mapping
     public :: linear_mapping_2D
     public :: undivided_differences
+    public :: matinv
+    public :: matdet
+    public :: swap
+    public :: sort_indices
 
     interface sinRamp
         module procedure scalar_sinRamp
@@ -47,6 +51,16 @@ module Utilities
         module procedure scalar_linear_mapping_2D
         module procedure vector_linear_mapping_2D
     end interface linear_mapping_2D
+
+    interface swap
+        module procedure integer_swap
+        module procedure real_swap
+    end interface swap
+
+    interface sort_indices
+        module procedure integer_sort_indices
+        module procedure real_sort_indices
+    end interface sort_indices
 
 contains
 
@@ -423,5 +437,147 @@ recursive function undivided_differences(x) result(dif)
     end if
 
 end function undivided_differences
+
+
+pure subroutine matinv(n, A, Ainv, tol, info)
+    !* Arguments *!
+    integer,            intent(in)  :: n
+    real(wp),           intent(in)  :: A(n, n)
+    real(wp),           intent(out) :: Ainv(n, n)
+    real(wp), optional, intent(in)  :: tol
+    integer,  optional, intent(out) :: info
+
+    !* Local variables *!
+    real(wp) :: d
+    logical  :: iszero
+    integer  :: info_
+
+    if (n == 1) then
+        info_ = 1
+        Ainv = A
+
+    elseif (n == 2) then
+        d = matdet(2, A)
+        if (present(tol)) then
+            iszero = almost_zero(d, tol)
+        else
+            iszero = almost_zero(d)
+        end if
+        if (iszero) then
+            info_ = -1
+        else
+            info_ = 1
+            Ainv(1, 1) =  A(2, 2) / d
+            Ainv(2, 1) = -A(2, 1) / d
+            Ainv(1, 2) = -A(1, 2) / d
+            Ainv(2, 2) =  A(1, 1) / d
+        end if
+
+    else
+        info_ = -2
+
+    endif
+
+    if (present(info)) info = info_
+end subroutine matinv
+
+pure function matdet(n, A)
+    integer,  intent(in) :: n
+    real(wp), intent(in) :: A(n, n)
+    real(wp)             :: matdet
+
+    if (n == 1) then
+        matdet = A(1, 1)
+
+    elseif (n == 2) then
+        matdet = A(1, 1) * A(2, 2) - A(1, 2) * A(2, 1)
+
+    else
+        matdet = 0.0_wp
+
+    endif
+end function matdet
+
+elemental subroutine integer_swap(a, b)
+    !* Arguments *!
+    integer, intent(inout) :: a
+    integer, intent(inout) :: b
+
+    !* Local variables *!
+    integer :: tmp
+
+    tmp = a
+    a = b
+    b = tmp
+end subroutine integer_swap
+
+elemental subroutine real_swap(a, b)
+    !* Arguments *!
+    real(wp), intent(inout) :: a
+    real(wp), intent(inout) :: b
+
+    !* Local variables *!
+    real(wp) :: tmp
+
+    tmp = a
+    a = b
+    b = tmp
+end subroutine real_swap
+
+pure subroutine integer_sort_indices(A, indices)
+    !* Arguments *!
+    integer, intent(inout) :: A(:)
+    integer, intent(out)   :: indices(:)
+
+    !* Local variables *!
+    integer :: n
+    integer :: newn
+    integer :: i
+
+    n = size(A)
+    indices = [(i, i = 1, n)]
+
+    do
+        newn = 0
+        do i = 1, n-1
+            if (A(i) > A(i+1)) then
+                call swap(A(i), A(i+1))
+                call swap(indices(i), indices(i+1))
+                newn = i
+            end if
+        end do
+        n = newn
+        if (n <= 1) exit
+    end do
+
+end subroutine integer_sort_indices
+
+pure subroutine real_sort_indices(A, indices)
+    !* Arguments *!
+    real(wp), intent(inout) :: A(:)
+    integer,  intent(out)   :: indices(:)
+
+    !* Local variables *!
+    integer :: n
+    integer :: newn
+    integer :: i
+
+    n = size(A)
+    indices = [(i, i = 1, n)]
+
+    do
+        newn = 0
+        do i = 1, n-1
+            if (A(i) > A(i+1)) then
+                call swap(A(i), A(i+1))
+                call swap(indices(i), indices(i+1))
+                newn = i
+            end if
+        end do
+        n = newn
+        if (n <= 1) exit
+    end do
+
+end subroutine real_sort_indices
 
 end module Utilities
