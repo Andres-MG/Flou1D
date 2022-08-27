@@ -88,7 +88,8 @@ module Constants
     integer, parameter :: eModalSensor        = 115
     integer, parameter :: eDensitySensor      = 116
     integer, parameter :: eJumpSensor         = 117
-    integer, parameter :: eClusterSensor      = 118
+    integer, parameter :: eKmeansSensor       = 118
+    integer, parameter :: eGMMSensor          = 119
 
     ! Enum: type of polynomial expansion
     integer, parameter :: eNodal = 120

@@ -41,7 +41,7 @@ program main
     call TruncError%construct(TRUNCERRORTYPE, TECORRECTION, LOWERLIMIT)
 
     ! Shock-capturing sensor
-    call Sensor%construct(SENSORTYPE, SECSENSORTYPE, SENSEDVAR, &
+    call Sensor%construct(SENSORTYPE, SECSENSORTYPE, SENSEDVAR, NUMCLUSTERS, &
                           RAMPBOTTOM, RAMPTOP, SECRAMPBOTTOM, SECRAMPTOP)
 
     ! h/p adaptator

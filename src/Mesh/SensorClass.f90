@@ -18,7 +18,7 @@ module SensorClass
     use TruncationErrorClass
     use ExceptionsAndMessages
     use Physics
-    use Clustering, only: kMeans
+    use Clustering, only: kMeans, GMM
 
     implicit none
 
@@ -48,6 +48,7 @@ module SensorClass
         integer  :: SensorType
         integer  :: SecSensorType
         integer  :: SensedVariable
+        integer  :: nClusters
         real(wp) :: mainMin
         real(wp) :: mainMax
         real(wp) :: mainS0
@@ -56,9 +57,9 @@ module SensorClass
         real(wp) :: secMax
         real(wp) :: secS0
         real(wp) :: secDelta
-        procedure(SensorGlobal_Int), private, pointer, nopass :: globalSensor => null()
-        procedure(Sensor_Int),       private, pointer, nopass :: mainSensor   => null()
-        procedure(Sensor_Int),       private, pointer, nopass :: secSensor    => null()
+        procedure(SensorGlobal_Int), private, pointer :: globalSensor => null()
+        procedure(Sensor_Int),       private, pointer :: mainSensor   => null()
+        procedure(Sensor_Int),       private, pointer :: secSensor    => null()
     contains
         procedure :: construct  => Sensor_constructor
         procedure :: sense      => Sensor_compute_sensor
@@ -67,15 +68,17 @@ module SensorClass
     end type Sensor_t
 
     abstract interface
-        subroutine SensorGlobal_Int(mesh, time)
-            import wp, Mesh_t
-            type(Mesh_t),   intent(inout) :: mesh
-            real(wp),       intent(in)    :: time
+        subroutine SensorGlobal_Int(self, mesh, time)
+            import wp, Sensor_t, Mesh_t
+            class(Sensor_t), intent(in)    :: self
+            type(Mesh_t),    intent(inout) :: mesh
+            real(wp),        intent(in)    :: time
         end subroutine SensorGlobal_Int
-        function Sensor_Int(elem, time)
-            import wp, Elem_t
-            type(Elem_t), intent(inout) :: elem
-            real(wp),     intent(in)    :: time
+        function Sensor_Int(self, elem, time)
+            import wp, Sensor_t, Elem_t
+            class(Sensor_t), intent(in)    :: self
+            type(Elem_t),    intent(inout) :: elem
+            real(wp),        intent(in)    :: time
             real(wp) :: Sensor_Int
         end function Sensor_Int
     end interface
@@ -95,17 +98,19 @@ contains
 !> @param[in]  sensType     sensor type to be used
 !> @param[in]  secSensType  secondary sensor type to be used
 !> @param[in]  sensVar      variable used to compute the sensor
+!> @param[in]  numClusters  number of clusters to used by clustering algorithms
 !> @param[in]  mainBottom   lower limit of the main sensor ramp
 !> @param[in]  mainTop      upper limit of the main sensor ramp
 !> @param[in]  secBottom    lower limit of the secondary sensor ramp
 !> @param[in]  secTop       upper limit of the secondary sensor ramp
 !···············································································
-subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
+subroutine Sensor_constructor(this, sensType, secSensType, sensVar, numClusters, &
                               mainBottom, mainTop, secBottom, secTop)
     !* Arguments *!
     integer,  intent(in) :: sensType
     integer,  intent(in) :: secSensType
     integer,  intent(in) :: sensVar
+    integer,  intent(in) :: numClusters
     real(wp), intent(in) :: mainBottom
     real(wp), intent(in) :: mainTop
     real(wp), intent(in) :: secBottom
@@ -117,6 +122,7 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     this%SensorType     = sensType
     this%SecSensorType  = secSensType
     this%SensedVariable = sensVar
+    this%nClusters      = numClusters
 
     this%mainMin   = mainBottom
     this%mainMax   = mainTop
@@ -145,8 +151,11 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     case (eJumpSensor)
         this%mainSensor => jumpSensor
 
-    case (eClusterSensor)
-        this%globalSensor => clusteringSensor
+    case (eKmeansSensor)
+        this%globalSensor => kMeansSensor
+
+    case (eGMMSensor)
+        this%globalSensor => GMMSensor
 
     case default
         call printError("SensorClass.f90", &
@@ -172,7 +181,13 @@ subroutine Sensor_constructor(this, sensType, secSensType, sensVar, &
     case (eJumpSensor)
         this%secSensor => jumpSensor
 
-    case (eClusterSensor)
+    case (eKmeansSensor)
+        call printError("SensorClass.f90", &
+                        "The k-means sensor cannot be selected as a secondary sensor.")
+
+    case (eGMMSensor)
+        call printError("SensorClass.f90", &
+                        "The GMM sensor cannot be selected as a secondary sensor.")
 
     case default
         call printError("SensorClass.f90", &
@@ -306,10 +321,11 @@ end subroutine Sensor_update_sensor_values
 !> @param[inout]  elem  element where the sensor is computed
 !> @param[in]     time  time instant
 !···············································································
-function aliasingSensor(elem, time)
+function aliasingSensor(this, elem, time)
     !* Arguments *!
     real(wp), intent(in) :: time
     ! Derived types
+    class(Sensor_t), intent(in) :: this
     type(Elem_t), intent(inout) :: elem
 
     !* Return values *!
@@ -361,10 +377,11 @@ end function aliasingSensor
 !> @param[inout]  elem  element where the sensor is computed
 !> @param[in]     time  time instant
 !···············································································
-function TEsensor(elem, time)
+function TEsensor(this, elem, time)
     !* Arguments *!
     real(wp), intent(in) :: time
     ! Derived types
+    class(Sensor_t), intent(in) :: this
     type(Elem_t), intent(inout) :: elem
 
     !* Return values *!
@@ -417,10 +434,11 @@ end function TEsensor
 !> @param[in]  elem  element where the sensor is computed
 !> @param[in]  time  time instant
 !···············································································
-function LegendreSensor(elem, time)
+function LegendreSensor(this, elem, time)
     !* Arguments *!
     real(wp), intent(in) :: time
     ! Derived types
+    class(Sensor_t), intent(in) :: this
     type(Elem_t), intent(inout) :: elem
 
     !* Return values *!
@@ -472,10 +490,11 @@ end function LegendreSensor
 !> @param[in]  elem  element where the sensor is computed
 !> @param[in]  time  time instant
 !···············································································
-function densitySensor(elem, time)
+function densitySensor(this, elem, time)
     !* Arguments *!
     real(wp), intent(in) :: time
     ! Derived types
+    class(Sensor_t), intent(in) :: this
     type(Elem_t), intent(inout) :: elem
 
     !* Return value *!
@@ -517,10 +536,11 @@ end function densitySensor
 !> @param[in]  elem  element where the sensor is computed
 !> @param[in]  time  time instant
 !···············································································
-function jumpSensor(elem, time)
+function jumpSensor(this, elem, time)
     !* Arguments *!
     real(wp), intent(in) :: time
     ! Derived types
+    class(Sensor_t), intent(in) :: this
     type(Elem_t), intent(inout) :: elem
 
     !* Return values *!
@@ -564,17 +584,18 @@ end function jumpSensor
 !
 !  DESCRIPTION
 !> @brief
-!> Sensor using clustering algorithms
-!> (based on the degree thesis of Carlos Piqueras)
+!> Sensor using the kMeans clustering algorithm
+!> (based on the degree thesis of Carlos Piqueras).
 !
 !> @param[inout]  mesh  mesh with all the elements to be sensed
 !> @param[in]     time  time instant
 !···············································································
-subroutine clusteringSensor(mesh, time)
+subroutine kMeansSensor(this, mesh, time)
     !* Arguments *!
     real(wp), intent(in) :: time
     ! Derived types
-    type(Mesh_t),   intent(inout) :: mesh
+    class(Sensor_t), intent(in)    :: this
+    type(Mesh_t),    intent(inout) :: mesh
 
     !* Local variables *!
     integer :: ie, i
@@ -583,10 +604,10 @@ subroutine clusteringSensor(mesh, time)
     integer  :: nnodes
     integer  :: cnt
     integer  :: n
-    real(wp) :: p1, p2
-    real(wp) :: dx
-    real(wp) :: minimum, maximum
-    real(wp) :: centroids(3,2)
+    integer  :: info
+    real(wp) :: u2
+    real(wp) :: higherCluster
+    real(wp) :: centroids(2,this%nClusters)
     real(wp), allocatable :: derivs(:,:)
     integer,  allocatable :: clusters(:)
 
@@ -597,56 +618,32 @@ subroutine clusteringSensor(mesh, time)
         elem => mesh%elems%next()
         nnodes = nnodes + elem%std%n
     end do
-    allocate(derivs(nnodes,2))  ! (rhox, px)
+    allocate(derivs(2,nnodes))  ! (rhox, px)
     allocate(clusters(nnodes))
 
     cnt = 0
     call mesh%elems%reset_last(0)
     do ie = 1, mesh%elems%size()
-
         elem => mesh%elems%next()
         n = elem%std%n
-
-        cnt = cnt + 1
-        dx = (elem%x(2) - elem%x(1))
-        p1 = getPressure(elem%Phi(1,:))
-        p2 = getPressure(elem%Phi(2,:))
-        derivs(cnt,1) = (elem%Phi(2,1) - elem%Phi(1,1)) / dx
-        derivs(cnt,2) = (p2 - p1) / dx
-
-        do i = 2, n-1
+        do i = 1, n
             cnt = cnt + 1
-            dx = 2.0_wp * (elem%x(i+1) - elem%x(i-1))
-            p1 = getPressure(elem%Phi(i-1,:))
-            p2 = getPressure(elem%Phi(i+1,:))
-            derivs(cnt,1) = (elem%Phi(i+1,1) - elem%Phi(i-1,1)) / dx
-            derivs(cnt,2) = (p2 - p1) / dx
+            u2 = (elem%Phi(i,IRHOU) / elem%Phi(i,IRHO))**2
+            derivs(1,cnt) = elem%PhiD(i,IRHO)
+            derivs(2,cnt) = Phys%GammaMinusOne * (elem%PhiD(i,IRHOE) - &
+                            0.5_wp * u2 * elem%PhiD(i,IRHO) -          &
+                            elem%Phi(i,IRHOU) * elem%PhiD(i,IRHOU))
         end do
-
-        cnt = cnt + 1
-        dx = (elem%x(n) - elem%x(n-1))
-        p1 = getPressure(elem%Phi(n-1,:))
-        p2 = getPressure(elem%Phi(n,:))
-        derivs(cnt,1) = (elem%Phi(n,1) - elem%Phi(n-1,1)) / dx
-        derivs(cnt,2) = (p2 - p1) / dx
-
     end do
 
     ! Rescale the derivatives for clustering
-    derivs = abs(derivs)
-    minimum = minval(derivs(:,1))
-    maximum = maxval(derivs(:,1))
-    derivs(:,1) = (derivs(:,1) - minimum) / (maximum - minimum)
+    call getClusterVariables(this%nClusters, derivs, centroids)
 
-    minimum = minval(derivs(:,2))
-    maximum = maxval(derivs(:,2))
-    derivs(:,2) = (derivs(:,2) - minimum) / (maximum - minimum) * 20.0_wp
-
-    ! Make clusters
-    centroids(1,:) = [minval(derivs(:,1)), minval(derivs(:,2))]
-    centroids(3,:) = [maxval(derivs(:,1)), maxval(derivs(:,2))]
-    centroids(2,:) = (centroids(1,:) + centroids(3,:)) / 2.0_wp
-    call kMeans(3, derivs, centroids, clusters)
+    ! Clustering
+    call kMeans(this%nClusters, derivs, centroids, clusters, info)
+    if (info < 0) then
+        call printWarning("SensorClass.f90", "kMeans did not converge")
+    end if
 
     ! Assign sensor value according to clusters
     cnt = 0
@@ -654,19 +651,163 @@ subroutine clusteringSensor(mesh, time)
     do ie = 1, mesh%elems%size()
         elem => mesh%elems%next()
         n = elem%std%n
-        if (any(clusters(cnt+1:cnt+n) == 3)) then
-            elem%sens = 1.0_wp
-        else if (any(clusters(cnt+1:cnt+n) == 2)) then
-            elem%sens = 0.5_wp
-        else
+        higherCluster = maxval(clusters(cnt+1:cnt+n))
+        elem%sens = real(higherCluster - 1, kind=wp) / (this%nClusters - 1)
+        cnt = cnt + n
+    end do
+
+    nullify(elem)
+
+end subroutine kMeansSensor
+
+!···············································································
+!> @author
+!> Andres Mateo
+!
+!  DESCRIPTION
+!> @brief
+!> Sensor using the Gaussian Mixture Model
+!> (based on the degree thesis of Carlos Piqueras).
+!
+!> @param[inout]  mesh  mesh with all the elements to be sensed
+!> @param[in]     time  time instant
+!···············································································
+subroutine GMMSensor(this, mesh, time)
+    !* Arguments *!
+    real(wp), intent(in) :: time
+    ! Derived types
+    class(Sensor_t), intent(in)    :: this
+    type(Mesh_t),    intent(inout) :: mesh
+
+    !* Local variables *!
+    integer :: ie, i
+    type(Elem_t), pointer :: elem
+
+    integer  :: nclusters
+    integer  :: nnodes
+    integer  :: cnt
+    integer  :: n
+    integer  :: info
+    real(wp) :: u2
+    real(wp) :: higherCluster
+    real(wp) :: centroids(2,this%nClusters)
+    real(wp), allocatable :: derivs(:,:)
+    integer,  allocatable :: clusters(:)
+
+
+    ! Compute derivatives
+    nnodes = 0
+    call mesh%elems%reset_last(0)
+    do ie = 1, mesh%elems%size()
+        elem => mesh%elems%next()
+        nnodes = nnodes + elem%std%n
+    end do
+    allocate(derivs(2,nnodes))  ! (rhox, px)
+    allocate(clusters(nnodes))
+
+    cnt = 0
+    call mesh%elems%reset_last(0)
+    do ie = 1, mesh%elems%size()
+        elem => mesh%elems%next()
+        n = elem%std%n
+        do i = 1, n
+            cnt = cnt + 1
+            u2 = (elem%Phi(i,IRHOU) / elem%Phi(i,IRHO))**2
+            derivs(1,cnt) = elem%PhiD(i,IRHO)
+            derivs(2,cnt) = Phys%GammaMinusOne * (elem%PhiD(i,IRHOE) - &
+                            0.5_wp * u2 * elem%PhiD(i,IRHO) -          &
+                            elem%Phi(i,IRHOU) * elem%PhiD(i,IRHOU))
+        end do
+    end do
+
+    ! Rescale the derivatives for clustering
+    call getClusterVariables(this%nClusters, derivs, centroids)
+
+    ! Clustering
+    call GMM(this%nClusters, nclusters, derivs, centroids, clusters, info)
+    if (info == -1) then
+        call printWarning("SensorClass.f90", "GMM used kMeans")
+    elseif (info == -2) then
+        call printWarning("SensorClass.f90", "GMM did not converge")
+    end if
+
+    ! Assign sensor value according to clusters
+    cnt = 0
+    call mesh%elems%reset_last(0)
+    do ie = 1, mesh%elems%size()
+        elem => mesh%elems%next()
+        n = elem%std%n
+        if (nclusters <= 1) then
             elem%sens = 0.0_wp
+        else
+            higherCluster = maxval(clusters(cnt+1:cnt+n))
+            elem%sens = real(higherCluster - 1, kind=wp) / (nclusters - 1)
         end if
         cnt = cnt + n
     end do
 
     nullify(elem)
 
-end subroutine clusteringSensor
+end subroutine GMMSensor
+
+subroutine getClusterVariables(nclusters, x, xavg)
+    !* Arguments *!
+    integer,  intent(in)    :: nclusters
+    real(wp), intent(inout) :: x(:,:)
+    real(wp), intent(out)   :: xavg(:,:)
+
+    !* Local variables *!
+    integer  :: i
+    real(wp) :: minimum(2)
+    real(wp) :: maximum(2)
+    real(wp) :: diff(2)
+
+
+    x = abs(x)
+    minimum = minval(x, dim=2)
+    maximum = maxval(x, dim=2)
+
+    if (almost_zero(maximum(1) - minimum(1))) then
+        if (maximum(1) > 0.0_wp) then
+            x(1,:) = 1.0_wp
+            minimum(1) = 1.0_wp
+            maximum(1) = 1.0_wp
+        else
+            x(1,:) = 0.0_wp
+            minimum(1) = 0.0_wp
+            maximum(1) = 0.0_wp
+        end if
+    else
+        x(1,:) = (x(1,:) - minimum(1)) / (maximum(1) - minimum(1))
+        minimum(1) = 0.0_wp
+        maximum(1) = 1.0_wp
+    end if
+
+    if (almost_zero(maximum(2) - minimum(2))) then
+        if (maximum(2) > 0.0_wp) then
+            x(2,:) = 20.0_wp
+            minimum(2) = 20.0_wp
+            maximum(2) = 20.0_wp
+        else
+            x(2,:) = 0.0_wp
+            minimum(2) = 0.0_wp
+            maximum(2) = 0.0_wp
+        end if
+    else
+        x(2,:) = (x(2,:) - minimum(2)) / (maximum(2) - minimum(2)) * 20.0_wp
+        minimum(2) = 0.0_wp
+        maximum(2) = 20.0_wp
+    end if
+
+    ! Make clusters
+    xavg(:,1) = minimum
+    xavg(:,nClusters) = maximum
+    diff = (maximum - minimum) / (nClusters - 1)
+    do i = 2, nClusters-1
+        xavg(:,i) = minimum + diff * (i - 1)
+    end do
+
+end subroutine getClusterVariables
 
 !···············································································
 !> @author
@@ -691,11 +832,7 @@ function getSensedVar(Phi) result(var)
         var = Phi(Sensor%SensedVariable)
 
     else
-        if (Phi(IRHO) /= 0.0_wp) then
-            var = getPressure(Phi) * Phi(IRHO)
-        else
-            var = 0.0_wp
-        end if
+        var = getPressure(Phi) * Phi(IRHO)
 
     end if
 

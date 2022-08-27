@@ -126,8 +126,9 @@ module Setup_params
     !           - Modal sensor:     eModalSensor
     !           - Density sensor:   eDensitySensor
     !           - Jump sensor:      eJumpSensor
-    !           - Cluster sensor:   eClusterSensor
-    integer, parameter :: SENSORTYPE    = eClusterSensor
+    !           - kMeans sensor:    eKmeansSensor
+    !           - GMM sensor:       eGMMSensor
+    integer, parameter :: SENSORTYPE    = eGMMSensor
     integer, parameter :: SECSENSORTYPE = eJumpSensor
 
     !       Shape of the activation function
@@ -149,6 +150,9 @@ module Setup_params
     real(wp), parameter :: SECRAMPBOTTOM   = -2.0_wp
     integer,  parameter :: SENSORWINDOW(2) = [0, huge(1)]
     integer,  parameter :: SENSORSTEP      = 1
+
+    !       Number of clusters for clustering sensors
+    integer, parameter :: NUMCLUSTERS = 4
 
     !       Sensed variable
     !           - rho*p: 0
